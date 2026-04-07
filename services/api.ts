@@ -14,7 +14,7 @@ import {
 } from "../types";
 
 const API_BASE_URL = "https://edu-ace-ai.onrender.com/api";
-// https://edu-ace.netlify.app http://localhost:8080/api
+// https://edu-ace.netlify.app | http://localhost:8080/api | https://edu-ace-ai.onrender.com/api
 
 const api = axios.create({
   baseURL: API_BASE_URL,

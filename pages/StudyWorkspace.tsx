@@ -4,11 +4,13 @@ import {
   Send,
   ArrowLeft,
   Sparkles,
+  MessageSquare,
   BookOpen,
   History,
   Bot,
   ShieldAlert,
   User as UserIcon,
+  RefreshCw,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { documentApi, aiApi } from "../services/api";
@@ -22,10 +24,9 @@ const StudyWorkspace: React.FC = () => {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [isReadOnly, setIsReadOnly] = useState(false); // Trạng thái chỉ xem
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Lấy thông tin user hiện tại
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
 
   useEffect(() => {
@@ -34,37 +35,23 @@ const StudyWorkspace: React.FC = () => {
     const loadData = async () => {
       try {
         const idNumber = Number(docId);
-        // 1. Lấy thông tin tài liệu trước
         const docRes = await documentApi.getById(idNumber);
         const docData = docRes.data.data;
         setDoc(docData);
 
-        // 2. LOGIC QUYẾT ĐỊNH QUYỀN HẠN:
-        // Nếu người dùng là ADMIN và tài liệu KHÔNG PHẢI của mình -> Chế độ chỉ xem
-        const readOnlyStatus =
-          currentUser.role === "ADMIN" &&
+        const readOnlyStatus = 
+          currentUser.role === "ADMIN" && 
           docData.ownerCode !== currentUser.studentCode;
-
+        
         setIsReadOnly(readOnlyStatus);
 
-        // 3. Nếu không phải chế độ chỉ xem, lấy lịch sử chat
         if (!readOnlyStatus) {
           const historyRes = await aiApi.getChatHistory(idNumber);
           const mappedHistory: ChatMessage[] = historyRes.data.data.flatMap(
             (item: any) => [
-              {
-                id: `q-${item.id}`,
-                role: "user",
-                content: item.question,
-                timestamp: item.createdAt,
-              },
-              {
-                id: `a-${item.id}`,
-                role: "assistant",
-                content: item.answer,
-                timestamp: item.createdAt,
-              },
-            ],
+              { id: `q-${item.id}`, role: "user", content: item.question, timestamp: item.createdAt },
+              { id: `a-${item.id}`, role: "assistant", content: item.answer, timestamp: item.createdAt },
+            ]
           );
           setMessages(mappedHistory);
         }
@@ -78,20 +65,15 @@ const StudyWorkspace: React.FC = () => {
     loadData();
   }, [docId, currentUser.studentCode, currentUser.role]);
 
-  // Cuộn xuống tin nhắn mới nhất
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     }
   }, [messages, sending]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isReadOnly) return; // Chặn gửi tin nếu đang ở mode xem file người khác
-    if (!input.trim() || sending || !docId) return;
+    if (isReadOnly || !input.trim() || sending || !docId) return;
 
     const currentInput = input;
     const userMsg: ChatMessage = {
@@ -122,137 +104,141 @@ const StudyWorkspace: React.FC = () => {
     }
   };
 
-  if (loading)
-    return (
-      <div className="flex h-screen items-center justify-center">
-        Đang tải...
-      </div>
-    );
+  if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-white">
+      <RefreshCw className="animate-spin text-blue-600 mr-2" />
+      <span className="font-bold text-slate-600 uppercase tracking-widest text-xs">Khởi tạo không gian học tập...</span>
+    </div>
+  );
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
-      {/* Nút Back */}
-      <div className="fixed left-4 top-20 z-20">
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50 flex-col md:flex-row">
+      
+      {/* Nút quay lại - Cố định ở góc trên trái vùng tài liệu */}
+      <div className="absolute left-6 top-20 z-20 hidden lg:block">
         <Link
           to={isReadOnly ? "/admin/all-documents" : "/documents"}
-          className="group flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-md hover:bg-blue-600 hover:text-white transition-all"
+          className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm border border-slate-200 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
         >
-          <ArrowLeft size={16} />
-          {isReadOnly ? "Quay lại kho tài liệu" : "Thư viện của tôi"}
+          <ArrowLeft size={14} />
+          {isReadOnly ? "Hệ thống" : "Thư viện"}
         </Link>
       </div>
 
-      {/* Vùng hiển thị tài liệu */}
-      <div className="flex-1 overflow-y-auto px-8 py-12 lg:px-20">
-        <div className="mx-auto max-w-3xl rounded-xl bg-white p-12 shadow-xl ring-1 ring-slate-200">
-          <div className="mb-10 border-b border-slate-100 pb-8">
-            <h1 className="text-4xl font-extrabold text-slate-900">
-              {doc?.fileName}
-            </h1>
-            <div className="mt-4 flex items-center gap-4 text-xs font-bold uppercase tracking-widest text-slate-400">
-              {isReadOnly ? (
-                <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full flex items-center gap-1">
-                  <ShieldAlert size={12} /> Chế độ xem (Hệ thống)
-                </span>
-              ) : (
-                <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full flex items-center gap-1">
-                  <UserIcon size={12} /> Tài liệu cá nhân
-                </span>
-              )}
-              <span className="flex items-center gap-1">
-                <BookOpen size={14} /> Nội dung gốc
-              </span>
+      {/* VÙNG 1: HIỂN THỊ TÀI LIỆU (CUỘN ĐỘC LẬP) */}
+      <div className="flex-1 overflow-y-auto bg-slate-50/50 scrollbar-thin">
+        <div className="mx-auto max-w-4xl px-6 py-10 lg:px-16 lg:py-16">
+          <div className="rounded-3xl bg-white p-8 lg:p-14 shadow-sm border border-slate-200/60">
+            <div className="mb-10 border-b border-slate-100 pb-8">
+              <h1 className="text-3xl lg:text-4xl font-black text-slate-900 leading-tight">
+                {doc?.fileName}
+              </h1>
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                 {isReadOnly ? (
+                   <span className="bg-amber-50 text-amber-600 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-[10px] font-black uppercase border border-amber-100">
+                     <ShieldAlert size={12} /> Chế độ xem Admin
+                   </span>
+                 ) : (
+                   <span className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-[10px] font-black uppercase border border-blue-100">
+                     <UserIcon size={12} /> Tài liệu của tôi
+                   </span>
+                 )}
+                 <span className="h-1 w-1 rounded-full bg-slate-300"></span>
+                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                   Cập nhật: {doc?.createdAt ? new Date(doc.createdAt).toLocaleDateString("vi-VN") : ""}
+                 </span>
+              </div>
             </div>
-          </div>
-          <div className="prose prose-blue max-w-none text-lg text-slate-700">
-            {doc?.content?.split("\n").map((para, i) => (
-              <p key={i} className="mb-4">
-                {para}
-              </p>
-            ))}
+            
+            {/* Nội dung tài liệu với Typography tốt hơn */}
+            <div className="prose prose-slate lg:prose-lg max-w-none text-slate-700 leading-relaxed font-medium">
+              {doc?.content?.split("\n").map((para, i) => (
+                para.trim() ? <p key={i} className="mb-4">{para}</p> : <br key={i} />
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Sidebar Chat AI */}
-      <div className="flex w-[450px] flex-col bg-white border-l border-slate-200 shadow-2xl relative">
-        {/* Overlay nếu đang ở chế độ xem tài liệu người khác */}
+      {/* VÙNG 2: SIDEBAR CHAT AI (CỐ ĐỊNH CHIỀU CAO) */}
+      <div className="flex w-full md:w-[380px] lg:w-[450px] flex-col bg-white border-l border-slate-200 shadow-2xl relative">
+        
+        {/* Overlay chặn tương tác nếu là tài liệu người khác */}
         {isReadOnly && (
-          <div className="absolute inset-0 z-50 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center p-10 text-center">
-            <div className="bg-amber-50 p-4 rounded-full mb-4">
-              <ShieldAlert className="text-amber-600 w-12 h-12" />
+          <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300">
+            <div className="bg-amber-100 p-4 rounded-3xl mb-4 text-amber-600 shadow-inner">
+              <ShieldAlert size={40} />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">
-              Chế độ xem quản trị
-            </h3>
-            <p className="text-sm text-slate-500 font-medium">
-              Bạn đang xem tài liệu của sinh viên <b>{doc?.ownerCode}</b>. Bạn
-              chỉ có quyền đọc nội dung, không thể tương tác AI.
+            <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Hạn chế tương tác</h3>
+            <p className="text-xs text-slate-500 mt-3 leading-relaxed font-bold">
+              Bạn đang xem tài liệu hệ thống của sinh viên khác. Chức năng Chat AI và Làm Quiz đã bị vô hiệu hóa.
             </p>
           </div>
         )}
 
-        {/* Header Chat */}
-        <div className="flex items-center justify-between border-b px-6 py-4 backdrop-blur-md bg-white/80">
+        {/* Header Sidebar */}
+        <div className="flex h-16 items-center justify-between border-b px-6 bg-white/50 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white">
-              <Bot size={24} />
+            <div className="h-9 w-9 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
+              <Bot size={20} />
             </div>
-            <h2 className="text-sm font-bold">Gia sư AI EduAce</h2>
+            <h2 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Gia sư EduAce</h2>
           </div>
+          {!isReadOnly && <History size={18} className="text-slate-300 hover:text-blue-600 cursor-pointer transition-colors" />}
         </div>
 
-        {/* Danh sách tin nhắn */}
-        <div
-          ref={scrollRef}
-          className="flex-1 space-y-6 overflow-y-auto p-6 scrollbar-thin"
-        >
-          {!isReadOnly &&
-            messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-[14.5px] ${
-                    msg.role === "user"
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-100"
-                      : "bg-slate-100 text-slate-800"
-                  }`}
-                >
-                  {msg.role === "assistant" ? (
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  ) : (
-                    msg.content
-                  )}
-                </div>
+        {/* Danh sách Chat */}
+        <div ref={scrollRef} className="flex-1 space-y-6 overflow-y-auto p-6 bg-slate-50/30 scrollbar-none">
+          {messages.length === 0 && !isReadOnly && (
+            <div className="text-center py-10">
+              <div className="bg-blue-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4">
+                <MessageSquare className="text-blue-400" size={20} />
               </div>
-            ))}
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Bắt đầu hỏi AI về kiến thức trong bài</p>
+            </div>
+          )}
+
+          {messages.map((msg, index) => (
+            <div key={index} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[90%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed shadow-sm font-medium ${
+                msg.role === "user" 
+                ? "bg-blue-600 text-white" 
+                : "bg-white text-slate-800 border border-slate-100"
+              }`}>
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-sm prose-blue max-w-none prose-p:leading-relaxed prose-strong:text-blue-700">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : msg.content}
+              </div>
+            </div>
+          ))}
+
           {sending && (
             <div className="flex justify-start">
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-blue-600 animate-pulse">
-                <Sparkles size={16} className="animate-spin" />
-                <span>EduAce đang phản hồi...</span>
+              <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-2xl px-4 py-2 shadow-sm text-xs font-bold text-blue-600 animate-pulse">
+                <Sparkles size={14} className="animate-spin" />
+                <span>AI đang phân tích...</span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Ô nhập liệu */}
+        {/* Input area */}
         {!isReadOnly && (
-          <div className="border-t p-6 bg-white">
-            <form onSubmit={handleSend} className="relative group">
+          <div className="p-4 border-t bg-white">
+            <form onSubmit={handleSend} className="relative">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Hỏi bất cứ điều gì về tài liệu này..."
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-5 pr-14 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all"
+                placeholder="Hỏi bất cứ điều gì..."
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-5 pr-14 text-sm font-bold outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all"
               />
               <button
                 type="submit"
                 disabled={sending || !input.trim()}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-xl bg-blue-600 p-2.5 text-white shadow-lg hover:bg-blue-700 disabled:bg-slate-200"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-blue-600 p-2.5 text-white shadow-lg hover:bg-blue-700 disabled:bg-slate-200 transition-all"
               >
                 <Send size={18} />
               </button>

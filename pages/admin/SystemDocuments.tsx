@@ -40,7 +40,7 @@ const SystemDocuments: React.FC = () => {
   // LOGIC XOÁ TÀI LIỆU (Gọi sang DocumentController của BE)
   const handleDeleteDoc = async (id: number, fileName: string) => {
     const isConfirm = window.confirm(
-      `XÁC NHẬN XOÁ HỆ THỐNG:\n"${fileName}"\n\nHành động này sẽ xoá vĩnh viễn tệp và các dữ liệu AI liên quan.`,
+      `XÁC NHẬN XOÁ HỆ THỐNG:\n"${fileName}"\n\nHành động này sẽ xoá vĩnh viễn tệp và các dữ liệu AI liên quan.`
     );
 
     if (isConfirm) {
@@ -53,11 +53,9 @@ const SystemDocuments: React.FC = () => {
         // Cập nhật State ngay tại chỗ để tài liệu biến mất khỏi bảng mà không cần load lại trang
         setDocs((prev) => prev.filter((d) => d.id !== id));
       } catch (err: any) {
-        // Nếu bạn đã sửa Interceptor trong api.ts như mình hướng dẫn trước đó,
+        // Nếu bạn đã sửa Interceptor trong api.ts như mình hướng dẫn trước đó, 
         // lỗi 403 ở đây sẽ chỉ hiện thông báo lỗi chứ không bị logout.
-        const errorMsg =
-          err.response?.data?.message ||
-          "Bạn không có quyền xoá hoặc lỗi hệ thống";
+        const errorMsg = err.response?.data?.message || "Bạn không có quyền xoá hoặc lỗi hệ thống";
         toast.error(errorMsg);
       }
     }
@@ -97,10 +95,7 @@ const SystemDocuments: React.FC = () => {
       {/* Tìm kiếm */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <div className="relative">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            size={18}
-          />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
             placeholder="Tìm kiếm tài liệu hệ thống theo tên..."
@@ -116,51 +111,27 @@ const SystemDocuments: React.FC = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50/50 border-b border-slate-200">
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                Tài liệu
-              </th>
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                Chủ sở hữu
-              </th>
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                Dung lượng
-              </th>
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">
-                Thao tác
-              </th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Tài liệu</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Chủ sở hữu</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Dung lượng</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading && docs.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="py-20 text-center text-slate-400 font-bold animate-pulse"
-                >
-                  Đang tải dữ liệu...
-                </td>
-              </tr>
+              <tr><td colSpan={4} className="py-20 text-center text-slate-400 font-bold animate-pulse">Đang tải dữ liệu...</td></tr>
             ) : filteredDocs.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="py-20 text-center text-slate-400">
-                  Không tìm thấy tài liệu phù hợp.
-                </td>
-              </tr>
+              <tr><td colSpan={4} className="py-20 text-center text-slate-400">Không tìm thấy tài liệu phù hợp.</td></tr>
             ) : (
               filteredDocs.map((doc) => (
-                <tr
-                  key={doc.id}
-                  className="hover:bg-slate-50/50 transition-colors group"
-                >
+                <tr key={doc.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 bg-red-50 text-red-600 rounded-xl">
                         <FileText size={20} />
                       </div>
                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-700 text-sm line-clamp-1">
-                          {doc.fileName}
-                        </span>
+                        <span className="font-bold text-slate-700 text-sm line-clamp-1">{doc.fileName}</span>
                         <span className="text-[10px] text-slate-400 font-bold">
                           {new Date(doc.createdAt).toLocaleDateString("vi-VN")}
                         </span>
@@ -172,9 +143,7 @@ const SystemDocuments: React.FC = () => {
                       <div className="w-7 h-7 bg-slate-100 rounded-full flex items-center justify-center text-slate-400">
                         <User size={14} />
                       </div>
-                      <span className="text-xs font-black">
-                        {doc.ownerCode || "Hệ thống"}
-                      </span>
+                      <span className="text-xs font-black">{doc.ownerCode || "Hệ thống"}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -191,9 +160,7 @@ const SystemDocuments: React.FC = () => {
                         title="Xem nội dung tài liệu"
                       >
                         <ExternalLink size={16} />
-                        <span className="text-[10px] font-bold">
-                          XEM NỘI DUNG
-                        </span>
+                        <span className="text-[10px] font-bold">XEM NỘI DUNG</span>
                       </button>
 
                       {/* Nút Xoá tài liệu */}
