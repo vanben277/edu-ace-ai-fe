@@ -7,14 +7,13 @@ import {
   DashboardStats,
   Quiz,
   QuizResult,
+  QuizResultResponse,
   QuizHistoryResponse,
   InteractionResponse,
   User,
-  QuizResultDetail,
 } from "../types";
 
-const API_BASE_URL = "https://edu-ace-ai.onrender.com/api";
-// https://edu-ace.netlify.app | http://localhost:8080/api | https://edu-ace-ai.onrender.com/api
+const API_BASE_URL = "http://localhost:8080/api";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -41,9 +40,7 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 403) {
-      toast.error(
-        "Bạn không có quyền thực hiện hành động này hoặc tài khoản bị hạn chế!",
-      );
+      toast.error("Bạn không có quyền thực hiện hành động này hoặc tài khoản bị hạn chế!");
     }
 
     return Promise.reject(error);
@@ -51,66 +48,46 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
-  login: (data: any) =>
-    api.post<ApiResponse<AuthResponse>>("/auth/login", data),
+  login: (data: any) => api.post<ApiResponse<AuthResponse>>("/auth/login", data),
   register: (data: any) => api.post<ApiResponse<any>>("/auth/register", data),
 };
 
 export const documentApi = {
   getAll: () => api.get<ApiResponse<Document[]>>("/documents"),
   getById: (id: number) => api.get<ApiResponse<Document>>(`/documents/${id}`),
-  upload: (formData: FormData) =>
-    api.post<ApiResponse<Document>>("/documents/upload", formData),
+  upload: (formData: FormData) => api.post<ApiResponse<Document>>("/documents/upload", formData),
   // Mới: API Xóa tài liệu
   delete: (id: number) => api.delete<ApiResponse<any>>(`/documents/${id}`),
 };
 
 export const aiApi = {
-  chatGeneral: (message: string) =>
-    api.post<ApiResponse<string>>("/ai/chat", { message }),
-  chatOnDocument: (documentId: number, message: string) =>
-    api.post<ApiResponse<string>>("/ai/chat-on-document", {
-      documentId,
-      message,
-    }),
-  getChatHistory: (documentId: number) =>
-    api.get<ApiResponse<InteractionResponse[]>>(`/ai/history/${documentId}`),
-  getQuizFeedback: (resultId: number) =>
-    api.get<ApiResponse<string>>(`/ai/${resultId}/feedback`),
+  chatGeneral: (message: string) => api.post<ApiResponse<string>>("/ai/chat", { message }),
+  chatOnDocument: (documentId: number, message: string) => api.post<ApiResponse<string>>("/ai/chat-on-document", { documentId, message }),
+  getChatHistory: (documentId: number) => api.get<ApiResponse<InteractionResponse[]>>(`/ai/history/${documentId}`),
+  getQuizFeedback: (resultId: number) => api.get<ApiResponse<string>>(`/ai/${resultId}/feedback`),
 };
 
 export const quizApi = {
-  getDashboard: () =>
-    api.get<ApiResponse<DashboardStats>>("/quizzes/dashboard"),
-  generate: (documentId: number, numberOfQuestions: number) =>
-    api.post<ApiResponse<Quiz>>("/quizzes/generate", {
-      documentId,
-      numberOfQuestions,
-    }),
-  submit: (quizId: number, answers: Record<number, string>) =>
-    api.post<ApiResponse<QuizResult>>("/quizzes/submit", { quizId, answers }),
-  getHistory: () =>
-    api.get<ApiResponse<QuizHistoryResponse[]>>("/quizzes/history"),
-
-  // Mới: Các API phục vụ luồng Review/Retake
-  getResult: (resultId: number) =>
-    api.get<ApiResponse<QuizResultDetail>>(`/quizzes/result/${resultId}`),
-  getQuizById: (quizId: number) =>
-    api.get<ApiResponse<Quiz>>(`/quizzes/${quizId}`),
+  getDashboard: () => api.get<ApiResponse<DashboardStats>>("/quizzes/dashboard"),
+  generate: (documentId: number, numberOfQuestions: number, topicHint?: string) =>
+    api.post<ApiResponse<Quiz>>("/quizzes/generate", { documentId, numberOfQuestions, topicHint }),
+  // Submit giờ trả về QuizResultResponse có kèm roadmap + answers chi tiết + quizId
+  submit: (quizId: number, answers: Record<number, string>) => api.post<ApiResponse<QuizResultResponse>>("/quizzes/submit", { quizId, answers }),
+  getHistory: () => api.get<ApiResponse<QuizHistoryResponse[]>>("/quizzes/history"),
+  // getResult cũng trả về QuizResultResponse (thay cho QuizResultDetail cũ)
+  getResult: (resultId: number) => api.get<ApiResponse<QuizResultResponse>>(`/quizzes/result/${resultId}`),
+  getQuizById: (quizId: number) => api.get<ApiResponse<Quiz>>(`/quizzes/${quizId}`),
 };
 
 export const adminApi = {
-  getUsers: (params: any) =>
-    api.get<ApiResponse<User[]>>("/admin/users", { params }),
-  getAllSystemDocuments: () =>
-    api.get<ApiResponse<Document[]>>("/admin/documents"),
-
+  getUsers: (params: any) => api.get<ApiResponse<User[]>>("/admin/users", { params }),
+  getAllSystemDocuments: () => api.get<ApiResponse<Document[]>>("/admin/documents"),
+  
   // SỬA TẠI ĐÂY: Đổi tên và đường dẫn cho khớp với Controller Java
-  toggleUserStatus: (userId: number) =>
+  toggleUserStatus: (userId: number) => 
     api.post<ApiResponse<any>>(`/admin/users/${userId}/toggle-status`),
 
-  deleteDocument: (docId: number) =>
-    api.delete<ApiResponse<any>>(`/admin/documents/${docId}`),
+  deleteDocument: (docId: number) => api.delete<ApiResponse<any>>(`/admin/documents/${docId}`),
 };
 
 import toast from "react-hot-toast"; // Đảm bảo import toast vào đây nếu dùng trong interceptor

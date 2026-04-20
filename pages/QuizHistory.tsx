@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { quizApi, aiApi } from "../services/api";
+import RoadmapView from "../components/RoadmapView";
 import toast from "react-hot-toast";
 
 const QuizHistory: React.FC = () => {
@@ -97,23 +98,31 @@ const QuizHistory: React.FC = () => {
                 </>
             ) : (
                 <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-4">
-                    <div className="flex items-center justify-between mb-8">
+                    <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
                         <button onClick={() => setSelectedResult(null)} className="flex items-center gap-2 font-bold text-slate-400 hover:text-blue-600"><ArrowLeft size={20} /> Quay lại</button>
-                        {/* <div className="flex gap-3">
-                            <button onClick={fetchAiFeedback} disabled={feedbackLoading} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg">
-                                {feedbackLoading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />} Nhận xét AI
-                            </button>
-                            
+                        <div className="flex flex-wrap gap-3">
+                            {!aiFeedback && (
+                                <button
+                                    onClick={fetchAiFeedback}
+                                    disabled={feedbackLoading}
+                                    className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50"
+                                >
+                                    {feedbackLoading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />} Nhận xét nhanh
+                                </button>
+                            )}
                             <button
                                 onClick={() => {
-                                    if (selectedResult.quizId) navigate(`/quizzes?retake=${selectedResult.quizId}`);
-                                    else toast.error("Cần cập nhật Backend để lấy Quiz ID làm lại bài!");
+                                    if (selectedResult.quizId) {
+                                        navigate(`/quizzes?retake=${selectedResult.quizId}`);
+                                    } else {
+                                        toast.error("Không tìm thấy Quiz ID để làm lại");
+                                    }
                                 }}
-                                className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg"
+                                className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-all"
                             >
-                                <RotateCcw size={18} /> Làm lại
+                                <RotateCcw size={18} /> Làm lại đề
                             </button>
-                        </div> */}
+                        </div>
                     </div>
 
                     <div className="bg-slate-900 rounded-[3rem] p-12 text-center text-white mb-10 shadow-2xl">
@@ -121,6 +130,16 @@ const QuizHistory: React.FC = () => {
                         <h2 className="text-6xl font-black mb-2">{selectedResult.score}/10</h2>
                         <p className="text-slate-400 font-bold uppercase text-sm">{selectedResult.quizTitle}</p>
                     </div>
+
+                    {/* Roadmap đã lưu khi submit lần đầu (nếu có) */}
+                    {selectedResult.roadmap && (
+                        <div className="mb-10">
+                            <RoadmapView
+                                roadmap={selectedResult.roadmap}
+                                servedBy={selectedResult.roadmapServedBy}
+                            />
+                        </div>
+                    )}
 
                     {aiFeedback && (
                         <div className="bg-indigo-50 border-2 border-indigo-100 rounded-[2.5rem] p-8 prose prose-indigo max-w-none mb-10 shadow-sm animate-in zoom-in-95">

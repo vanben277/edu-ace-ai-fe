@@ -62,7 +62,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </button>
               
               <h1 className="text-xs md:text-sm font-bold text-slate-400 uppercase tracking-widest truncate">
-                Hệ thống quản lý EduAce
+                Trợ lý học tập cá nhân
               </h1>
             </div>
 

@@ -33,16 +33,25 @@ export interface Document {
   content?: string;
 }
 
-// Cấu trúc cho màn hình Review (Chi tiết kết quả)
-export interface QuizResultDetail {
-  id: number;
-  score: number;
-  correctAnswers: number;
-  totalQuestions: number;
-  completedAt: string;
-  quiz: Quiz;
-  // Map lưu đáp án sinh viên đã chọn (ID câu hỏi -> Đáp án A/B/C/D)
-  userAnswers: Record<number, string>; 
+// LearningRoadmap structured output từ AI (khớp với LearningRoadmapResponse.java)
+export interface WeakTopic {
+  topic: string;
+  wrongCount: number;
+  priority: "CAO" | "TRUNG_BINH" | "THAP" | string;
+}
+
+export interface StudyStep {
+  day: number;
+  topic: string;
+  goal: string;
+  practice: string;
+}
+
+export interface LearningRoadmapResponse {
+  overallComment: string;
+  weakTopics: WeakTopic[] | null;
+  studyPlan: StudyStep[] | null;
+  nextStepSuggestion: string;
 }
 
 export interface Question {
@@ -92,6 +101,10 @@ export interface QuizResponse {
 export interface UserAnswerResponse {
   questionId: number;
   questionContent: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
   selectedOption: string;
   correctAnswer: string;
   isCorrect: boolean;
@@ -105,7 +118,10 @@ export interface QuizResultResponse {
   correctAnswers: number;
   score: number;
   completedAt: string;
-  userAnswers: UserAnswerResponse[]; // Danh sách đáp án chi tiết
+  answers: UserAnswerResponse[];          // Danh sách câu trả lời chi tiết (BE field name)
+  quizId: number;                         // Để hỗ trợ "Làm lại"
+  roadmap: LearningRoadmapResponse | null; // Lộ trình AI sinh kèm khi submit
+  roadmapServedBy: string | null;         // Tier nào đã phục vụ (gemini/groq)
 }
 
 export interface DashboardStats {

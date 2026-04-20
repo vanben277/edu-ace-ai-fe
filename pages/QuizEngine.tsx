@@ -12,11 +12,14 @@ import {
   Play,
   RotateCcw,
   History,
-  PlusCircle
+  PlusCircle,
+  Info,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { quizApi, documentApi, aiApi } from "../services/api";
-import { Document } from "../types";
+import { Document, QuizResultResponse } from "../types";
+import RoadmapView from "../components/RoadmapView";
+import Loading from "../components/Loading";
 import toast from "react-hot-toast";
 
 const QuizEngine: React.FC = () => {
@@ -37,9 +40,12 @@ const QuizEngine: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, number>>({});
 
-  const [result, setResult] = useState<any | null>(null);
+  const [result, setResult] = useState<(QuizResultResponse & { aiFeedbackText?: string }) | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [quizId, setQuizId] = useState<number | null>(null);
+  // Loading state cho one-click targeted practice — dùng full-screen overlay persistent
+  const [targetedLoadingTopic, setTargetedLoadingTopic] = useState<string | null>(null);
+
 
   // 1. Khởi tạo danh sách tài liệu
   useEffect(() => {
@@ -62,6 +68,20 @@ const QuizEngine: React.FC = () => {
     }
   }, [searchParams]);
 
+  /**
+   * Reset TẤT CẢ state liên quan đến 1 phiên làm quiz. Gọi trước mọi transition
+   * tạo/làm đề mới để tránh stale state (ví dụ: currentStep = 4 từ đề cũ → đề mới hiện 5/5).
+   */
+  const resetQuizFlow = (): void => {
+    setResult(null);
+    setQuizReady(false);
+    setQuizStarted(false);
+    setQuizId(null);
+    setQuestions([]);
+    setCurrentStep(0);
+    setUserAnswers({});
+  };
+
   const handleRetakeById = async (id: number) => {
     setIsGenerating(true);
     try {
@@ -73,9 +93,11 @@ const QuizEngine: React.FC = () => {
         options: [q.optionA, q.optionB, q.optionC, q.optionD],
       }));
 
+      // Reset trước rồi mới set quiz mới → tránh stale currentStep/userAnswers
+      resetQuizFlow();
       setQuestions(mappedQuestions);
       setQuizId(quizData.id);
-      setQuizStarted(true); 
+      setQuizStarted(true);
       toast.success("Đã tải lại bộ đề ôn tập!");
     } catch (err) {
       toast.error("Không thể tải bộ đề");
@@ -97,9 +119,11 @@ const QuizEngine: React.FC = () => {
         options: [q.optionA, q.optionB, q.optionC, q.optionD],
       }));
 
+      // Reset state cũ (currentStep, userAnswers) trước khi set đề mới
+      resetQuizFlow();
       setQuestions(mappedQuestions);
       setQuizId(quizData.id);
-      setQuizReady(true); 
+      setQuizReady(true);
       toast.success("AI đã soạn đề xong!");
     } catch (err) {
       toast.error("AI đang bận, vui lòng thử lại sau ít phút");
@@ -121,7 +145,10 @@ const QuizEngine: React.FC = () => {
       });
 
       const response = await quizApi.submit(quizId, formattedAnswers);
-      setResult(response.data.data);
+      const data = response.data.data;
+      setResult(data);
+      // Không show toast failover ở đây — badge amber trong RoadmapView đã hiển thị
+      // trạng thái AI dự phòng một cách friendly. Duplicate notification vi phạm UX.
     } catch (err) {
       toast.error("Nộp bài thất bại");
     } finally {
@@ -142,13 +169,71 @@ const QuizEngine: React.FC = () => {
     }
   };
 
-  // LOGIC: Làm lại chính bộ đề vừa làm xong
+  // LOGIC: Làm lại chính bộ đề vừa làm xong (giữ nguyên questions + quizId)
   const handleRetakeCurrent = () => {
     setResult(null);
     setCurrentStep(0);
     setUserAnswers({});
+    setQuizReady(false);
     setQuizStarted(true);
     toast.success("Bắt đầu ôn luyện lại bộ đề vừa rồi!");
+  };
+
+  // LOGIC: Reset về setup screen để tạo đề mới từ đầu (dùng cho footer CTA)
+  const handleStartFresh = (): void => {
+    resetQuizFlow();
+    navigate("/quizzes");
+  };
+
+  // LOGIC: One-click targeted practice — AI sinh quiz tập trung chủ đề, skip setup.
+  // UX: persistent full-screen overlay từ lúc click đến khi transition xong,
+  // không dùng toast ephemeral (vì operation 3-5s > ngưỡng "feedback sau 1s" của NN/g).
+  const handleTargetedPractice = async (topicHint: string): Promise<void> => {
+    // Lấy docId: ưu tiên selectedDoc đã chọn khi tạo quiz, fallback lookup từ quiz
+    let docId: number | null = selectedDoc ? Number(selectedDoc) : null;
+
+    if (!docId && result?.quizId) {
+      try {
+        const quizDetail = await quizApi.getQuizById(result.quizId);
+        docId = (quizDetail.data.data as any)?.documentId ?? null;
+      } catch {
+        docId = null;
+      }
+    }
+
+    if (!docId) {
+      toast.error("Không xác định được tài liệu gốc. Vui lòng tạo đề mới thủ công.");
+      handleStartFresh();
+      return;
+    }
+
+    // Show persistent overlay NGAY LẬP TỨC (<1ms feedback)
+    setTargetedLoadingTopic(topicHint);
+
+    try {
+      const response = await quizApi.generate(docId, 5, topicHint);
+      const quizData = response.data.data;
+
+      const mappedQuestions = quizData.questions.map((q: any) => ({
+        ...q,
+        options: [q.optionA, q.optionB, q.optionC, q.optionD],
+      }));
+
+      // Reset + chuyển thẳng vào màn làm bài, skip setup + preview
+      setResult(null);
+      setQuestions(mappedQuestions);
+      setQuizId(quizData.id);
+      setCurrentStep(0);
+      setUserAnswers({});
+      setSelectedDoc(String(docId));
+      setQuizReady(false);
+      setQuizStarted(true);
+      toast.success(`Bắt đầu luyện tập: ${topicHint}`, { duration: 2500 });
+    } catch (err) {
+      toast.error("AI đang bận, vui lòng thử lại sau ít phút");
+    } finally {
+      setTargetedLoadingTopic(null);
+    }
   };
 
   // --- 1. MÀN HÌNH THIẾT LẬP (SETUP) ---
@@ -244,64 +329,184 @@ const QuizEngine: React.FC = () => {
 
   // --- 3. MÀN HÌNH KẾT QUẢ ---
   if (result) {
-    return (
-      <div className="mx-auto max-w-4xl p-8 animate-in fade-in duration-500">
-        <div className="overflow-hidden rounded-[2.5rem] bg-white shadow-2xl border border-slate-100">
-          <div className="bg-slate-900 px-8 py-16 text-center text-white">
-            <Trophy className="mx-auto mb-6 h-16 w-16 text-yellow-400" />
-            <h2 className="text-3xl font-black uppercase tracking-tight">Hoàn thành bài thi!</h2>
-            <p className="text-6xl font-black text-blue-400 mt-6">{result.score}/10</p>
-          </div>
-          <div className="p-10">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold flex items-center gap-2"><GraduationCap className="text-blue-600" /> Phân tích từ AI</h3>
-              {!result.aiFeedbackText && (
-                <button onClick={getAIFeedback} disabled={feedbackLoading} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-xs font-black shadow-lg flex items-center gap-2 hover:bg-blue-700 transition-all">
-                  {feedbackLoading ? <RefreshCw className="animate-spin" size={14} /> : <Sparkles size={14} />} PHÂN TÍCH BÀI LÀM
-                </button>
-              )}
-            </div>
-            
-            {result.aiFeedbackText && (
-              <div className="bg-blue-50/50 p-8 rounded-3xl border border-blue-100 prose prose-blue max-w-none shadow-inner animate-in zoom-in-95">
-                <ReactMarkdown>{result.aiFeedbackText}</ReactMarkdown>
-                
-                {/* NÚT LÀM LẠI ĐỀ VỪA LÀM (Chỉ hiện khi có Feedback) */}
-                <div className="mt-8 border-t border-blue-100 pt-6 flex justify-center">
-                    <button 
-                        onClick={handleRetakeCurrent}
-                        className="flex items-center gap-2 bg-white border-2 border-blue-600 text-blue-600 px-8 py-3 rounded-2xl font-black text-sm hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                    >
-                        <RotateCcw size={18} /> LÀM LẠI ĐỀ NÀY
-                    </button>
-                </div>
-              </div>
-            )}
+    const wrongAnswers = (result.answers || []).filter((a) => !a.isCorrect);
 
-            <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <button 
-                onClick={() => { setQuizReady(false); setQuizStarted(false); setResult(null); navigate("/quizzes"); }} 
-                className="flex items-center justify-center gap-2 py-5 border-2 border-slate-100 rounded-2xl font-black text-slate-400 hover:bg-slate-50 transition-all uppercase text-sm tracking-widest"
-              >
-                <PlusCircle size={18} /> Làm đề khác
-              </button>
-              
-              <button 
-                onClick={() => navigate("/quiz-history")}
-                className="flex items-center justify-center gap-2 py-5 bg-slate-900 text-white rounded-2xl font-black text-sm tracking-widest hover:bg-blue-600 transition-all shadow-xl uppercase"
-              >
-                <History size={18} /> Lịch sử ôn tập
-              </button>
-            </div>
+    return (
+      <>
+        {targetedLoadingTopic && (
+          <Loading message={`AI đang sinh bài tập tập trung về: ${targetedLoadingTopic}...`} />
+        )}
+        <div className="mx-auto max-w-4xl p-6 md:p-8 space-y-8 animate-in fade-in duration-500">
+        {/* Hero score */}
+        <div className="overflow-hidden rounded-[2.5rem] bg-white shadow-2xl border border-slate-100">
+          <div className="bg-slate-900 px-8 py-14 text-center text-white">
+            <Trophy className="mx-auto mb-5 h-16 w-16 text-yellow-400" />
+            <h2 className="text-3xl font-black uppercase tracking-tight">Hoàn thành bài thi!</h2>
+            <p className="text-6xl font-black text-blue-400 mt-5">{result.score}/10</p>
+            <p className="text-slate-400 font-bold uppercase text-xs tracking-widest mt-3">
+              {result.correctAnswers}/{result.totalQuestions} câu đúng ({Math.round((result.correctAnswers / result.totalQuestions) * 100)}%)
+            </p>
+            {result.completedAt && (
+              <p className="text-slate-500 font-semibold text-[11px] mt-2">
+                Hoàn thành lúc {new Date(result.completedAt).toLocaleString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                })}
+              </p>
+            )}
           </div>
         </div>
-      </div>
+
+        {/* Roadmap (đã có sẵn từ submit response) */}
+        <RoadmapView
+          roadmap={result.roadmap}
+          servedBy={result.roadmapServedBy}
+          onTargetedPractice={handleTargetedPractice}
+          onStartFresh={handleStartFresh}
+        />
+
+        {/* Feedback markdown - tùy chọn, on demand */}
+        <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-black flex items-center gap-2">
+              <GraduationCap className="text-blue-600" /> Nhận xét nhanh từ AI
+            </h3>
+            {!result.aiFeedbackText && (
+              <button
+                onClick={getAIFeedback}
+                disabled={feedbackLoading}
+                className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-lg flex items-center gap-2 hover:bg-blue-700 transition-all disabled:opacity-50"
+              >
+                {feedbackLoading ? <RefreshCw className="animate-spin" size={14} /> : <Sparkles size={14} />} XEM NHẬN XÉT
+              </button>
+            )}
+          </div>
+          {result.aiFeedbackText ? (
+            <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 prose prose-blue max-w-none shadow-inner animate-in zoom-in-95">
+              <ReactMarkdown>{result.aiFeedbackText}</ReactMarkdown>
+            </div>
+          ) : (
+            <p className="text-slate-400 text-sm font-semibold">
+              Nhấn nút trên để AI phân tích chi tiết bài làm dưới dạng văn bản.
+            </p>
+          )}
+        </div>
+
+        {/* Chi tiết câu sai */}
+        {wrongAnswers.length > 0 && (
+          <div className="space-y-6">
+            <h3 className="text-2xl font-black text-slate-800 ml-2 flex items-center gap-3">
+              <span className="h-9 w-9 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center">
+                <Info size={18} />
+              </span>
+              Câu trả lời sai cần xem lại ({wrongAnswers.length})
+            </h3>
+
+            {wrongAnswers.map((answer, idx) => (
+              <div
+                key={idx}
+                className="bg-white rounded-[2.5rem] p-6 md:p-8 border border-slate-100 shadow-sm animate-in slide-in-from-bottom-2"
+              >
+                <div className="flex gap-4 mb-6">
+                  <div className="h-11 w-11 min-w-[44px] flex items-center justify-center rounded-full bg-red-500 text-white font-bold text-lg shadow-md">
+                    {idx + 1}
+                  </div>
+                  <h4 className="font-bold text-slate-800 text-lg leading-relaxed mt-1">
+                    {answer.questionContent}
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 mb-6">
+                  {(["A", "B", "C", "D"] as const).map((label) => {
+                    const optionText = answer[`option${label}` as keyof typeof answer] as string;
+                    const isSelected = answer.selectedOption === label;
+                    const isCorrect = answer.correctAnswer === label;
+
+                    let containerStyle = "bg-slate-50 border-slate-100 text-slate-600";
+                    if (isCorrect) {
+                      containerStyle = "bg-emerald-50 border-emerald-200 text-emerald-700 ring-2 ring-emerald-500/20";
+                    } else if (isSelected && !answer.isCorrect) {
+                      containerStyle = "bg-red-50 border-red-200 text-red-700 ring-2 ring-red-500/20";
+                    }
+
+                    return (
+                      <div
+                        key={label}
+                        className={`flex items-center gap-4 p-4 rounded-2xl border-2 transition-all ${containerStyle}`}
+                      >
+                        <span
+                          className={`h-9 w-9 min-w-[36px] flex items-center justify-center rounded-xl font-black border-2 ${
+                            isCorrect
+                              ? "border-emerald-300 bg-white"
+                              : isSelected
+                              ? "border-red-300 bg-white"
+                              : "border-slate-200 bg-white"
+                          }`}
+                        >
+                          {label}
+                        </span>
+                        <span className="font-bold text-[0.95rem]">{optionText}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {answer.explanation && (
+                  <div className="bg-indigo-50/50 rounded-2xl p-5 border border-indigo-100 flex gap-4">
+                    <div className="bg-white h-10 w-10 rounded-xl flex items-center justify-center text-indigo-600 shadow-sm shrink-0">
+                      <Info size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-1">
+                        Gia sư AI giải thích
+                      </p>
+                      <p className="text-slate-700 leading-relaxed font-semibold text-sm">
+                        {answer.explanation}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+          <button
+            onClick={handleRetakeCurrent}
+            className="flex items-center justify-center gap-2 py-5 border-2 border-blue-600 text-blue-600 rounded-2xl font-black text-sm tracking-widest hover:bg-blue-600 hover:text-white transition-all uppercase"
+          >
+            <RotateCcw size={18} /> Làm lại đề này
+          </button>
+          <button
+            onClick={handleStartFresh}
+            className="flex items-center justify-center gap-2 py-5 border-2 border-slate-100 rounded-2xl font-black text-slate-400 hover:bg-slate-50 transition-all uppercase text-sm tracking-widest"
+          >
+            <PlusCircle size={18} /> Đề khác
+          </button>
+          <button
+            onClick={() => navigate("/quiz-history")}
+            className="flex items-center justify-center gap-2 py-5 bg-slate-900 text-white rounded-2xl font-black text-sm tracking-widest hover:bg-blue-600 transition-all shadow-xl uppercase"
+          >
+            <History size={18} /> Lịch sử
+          </button>
+        </div>
+        </div>
+      </>
     );
   }
 
   // --- 4. MÀN HÌNH ĐANG LÀM BÀI ---
   const q = questions[currentStep];
   return (
+    <>
+      {targetedLoadingTopic && (
+        <Loading message={`AI đang sinh bài tập tập trung về: ${targetedLoadingTopic}...`} />
+      )}
     <div className="mx-auto max-w-3xl p-8 animate-in fade-in">
       <div className="mb-10 flex items-center justify-between">
         <button onClick={() => setQuizStarted(false)} className="text-xs font-black text-slate-400 uppercase flex items-center gap-2 hover:text-red-500 transition-colors"><ArrowLeft size={16} /> Thoát</button>
@@ -335,10 +540,20 @@ const QuizEngine: React.FC = () => {
         disabled={userAnswers[currentStep] === undefined || isGenerating}
         className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-black text-lg shadow-2xl flex items-center justify-center gap-3 hover:bg-blue-600 transition-all active:scale-95 disabled:bg-slate-200"
       >
-        {isGenerating ? <RefreshCw className="animate-spin" /> : currentStep === questions.length - 1 ? "HOÀN TẤT & NỘP BÀI" : "CÂU TIẾP THEO"}
-        <ArrowRight size={20} />
+        {isGenerating ? (
+          <>
+            <RefreshCw className="animate-spin" />
+            {currentStep === questions.length - 1 ? "AI ĐANG XÂY LỘ TRÌNH HỌC TẬP..." : "ĐANG XỬ LÝ..."}
+          </>
+        ) : (
+          <>
+            {currentStep === questions.length - 1 ? "HOÀN TẤT & NỘP BÀI" : "CÂU TIẾP THEO"}
+            <ArrowRight size={20} />
+          </>
+        )}
       </button>
     </div>
+    </>
   );
 };
 
