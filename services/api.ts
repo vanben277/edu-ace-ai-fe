@@ -10,10 +10,12 @@ import {
   QuizResultResponse,
   QuizHistoryResponse,
   InteractionResponse,
+  Subject,
+  SubjectInput,
   User,
 } from "../types";
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = "http://localhost:8090/api";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -53,24 +55,37 @@ export const authApi = {
 };
 
 export const documentApi = {
-  getAll: () => api.get<ApiResponse<Document[]>>("/documents"),
+  getAll: (params?: { subjectId?: number; unassignedOnly?: boolean }) =>
+    api.get<ApiResponse<Document[]>>("/documents", { params }),
   getById: (id: number) => api.get<ApiResponse<Document>>(`/documents/${id}`),
   upload: (formData: FormData) => api.post<ApiResponse<Document>>("/documents/upload", formData),
-  // Mới: API Xóa tài liệu
+  uploadBatch: (formData: FormData) => api.post<ApiResponse<Document[]>>("/documents/upload-batch", formData),
+  setSubject: (id: number, subjectId: number | null) =>
+    api.put<ApiResponse<Document>>(`/documents/${id}/subject`, { subjectId }),
   delete: (id: number) => api.delete<ApiResponse<any>>(`/documents/${id}`),
+};
+
+export const subjectApi = {
+  list: () => api.get<ApiResponse<Subject[]>>("/subjects"),
+  getById: (id: number) => api.get<ApiResponse<Subject>>(`/subjects/${id}`),
+  create: (data: SubjectInput) => api.post<ApiResponse<Subject>>("/subjects", data),
+  update: (id: number, data: SubjectInput) => api.put<ApiResponse<Subject>>(`/subjects/${id}`, data),
+  delete: (id: number) => api.delete<ApiResponse<any>>(`/subjects/${id}`),
 };
 
 export const aiApi = {
   chatGeneral: (message: string) => api.post<ApiResponse<string>>("/ai/chat", { message }),
   chatOnDocument: (documentId: number, message: string) => api.post<ApiResponse<string>>("/ai/chat-on-document", { documentId, message }),
+  chatOnDocuments: (documentIds: number[], message: string) =>
+    api.post<ApiResponse<string>>("/ai/chat-on-documents", { documentIds, message }),
   getChatHistory: (documentId: number) => api.get<ApiResponse<InteractionResponse[]>>(`/ai/history/${documentId}`),
   getQuizFeedback: (resultId: number) => api.get<ApiResponse<string>>(`/ai/${resultId}/feedback`),
 };
 
 export const quizApi = {
   getDashboard: () => api.get<ApiResponse<DashboardStats>>("/quizzes/dashboard"),
-  generate: (documentId: number, numberOfQuestions: number, topicHint?: string) =>
-    api.post<ApiResponse<Quiz>>("/quizzes/generate", { documentId, numberOfQuestions, topicHint }),
+  generate: (documentIds: number[], numberOfQuestions: number, topicHint?: string) =>
+    api.post<ApiResponse<Quiz>>("/quizzes/generate", { documentIds, numberOfQuestions, topicHint }),
   // Submit giờ trả về QuizResultResponse có kèm roadmap + answers chi tiết + quizId
   submit: (quizId: number, answers: Record<number, string>) => api.post<ApiResponse<QuizResultResponse>>("/quizzes/submit", { quizId, answers }),
   getHistory: () => api.get<ApiResponse<QuizHistoryResponse[]>>("/quizzes/history"),

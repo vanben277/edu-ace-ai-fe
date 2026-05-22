@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   CheckCircle,
   ArrowRight,
@@ -14,27 +14,37 @@ import {
   History,
   PlusCircle,
   Info,
+  FileText,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { quizApi, documentApi, aiApi } from "../services/api";
+import toast from "react-hot-toast";
+import { aiApi, documentApi, quizApi } from "../services/api";
 import { Document, QuizResultResponse } from "../types";
 import RoadmapView from "../components/RoadmapView";
 import Loading from "../components/Loading";
-import toast from "react-hot-toast";
+
+const MAX_QUIZ_DOCS = 3;
 
 const QuizEngine: React.FC = () => {
   const { docId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  
+
+  const initialFromUrl = (searchParams.get("docIds") || "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const initialIds = initialFromUrl.length > 0
+    ? initialFromUrl.slice(0, MAX_QUIZ_DOCS)
+    : docId ? [Number(docId)] : [];
+
   const [docs, setDocs] = useState<Document[]>([]);
-  const [selectedDoc, setSelectedDoc] = useState<string>(docId || "");
+  const [selectedDocIds, setSelectedDocIds] = useState<number[]>(initialIds);
   const [numQuestions, setNumQuestions] = useState<number>(5);
 
-  // Trạng thái luồng
   const [isGenerating, setIsGenerating] = useState(false);
-  const [quizReady, setQuizReady] = useState(false); 
-  const [quizStarted, setQuizStarted] = useState(false); 
+  const [quizReady, setQuizReady] = useState(false);
+  const [quizStarted, setQuizStarted] = useState(false);
 
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
@@ -43,11 +53,9 @@ const QuizEngine: React.FC = () => {
   const [result, setResult] = useState<(QuizResultResponse & { aiFeedbackText?: string }) | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [quizId, setQuizId] = useState<number | null>(null);
-  // Loading state cho one-click targeted practice — dùng full-screen overlay persistent
+  const [quizSourceIds, setQuizSourceIds] = useState<number[]>([]);
   const [targetedLoadingTopic, setTargetedLoadingTopic] = useState<string | null>(null);
 
-
-  // 1. Khởi tạo danh sách tài liệu
   useEffect(() => {
     const fetchDocs = async () => {
       try {
@@ -60,7 +68,6 @@ const QuizEngine: React.FC = () => {
     fetchDocs();
   }, []);
 
-  // 2. Xử lý khi được gọi "Làm lại" từ trang Lịch sử thông qua URL
   useEffect(() => {
     const retakeId = searchParams.get("retake");
     if (retakeId) {
@@ -68,10 +75,6 @@ const QuizEngine: React.FC = () => {
     }
   }, [searchParams]);
 
-  /**
-   * Reset TẤT CẢ state liên quan đến 1 phiên làm quiz. Gọi trước mọi transition
-   * tạo/làm đề mới để tránh stale state (ví dụ: currentStep = 4 từ đề cũ → đề mới hiện 5/5).
-   */
   const resetQuizFlow = (): void => {
     setResult(null);
     setQuizReady(false);
@@ -80,6 +83,17 @@ const QuizEngine: React.FC = () => {
     setQuestions([]);
     setCurrentStep(0);
     setUserAnswers({});
+  };
+
+  const toggleSelectDoc = (id: number) => {
+    setSelectedDocIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_QUIZ_DOCS) {
+        toast.error(`Trắc nghiệm tối đa ${MAX_QUIZ_DOCS} tài liệu`);
+        return prev;
+      }
+      return [...prev, id];
+    });
   };
 
   const handleRetakeById = async (id: number) => {
@@ -93,10 +107,10 @@ const QuizEngine: React.FC = () => {
         options: [q.optionA, q.optionB, q.optionC, q.optionD],
       }));
 
-      // Reset trước rồi mới set quiz mới → tránh stale currentStep/userAnswers
       resetQuizFlow();
       setQuestions(mappedQuestions);
       setQuizId(quizData.id);
+      setQuizSourceIds((quizData as any).sourceDocumentIds ?? []);
       setQuizStarted(true);
       toast.success("Đã tải lại bộ đề ôn tập!");
     } catch (err) {
@@ -106,12 +120,18 @@ const QuizEngine: React.FC = () => {
     }
   };
 
-  // HÀM RA ĐỀ: Soạn đề mới từ đầu
   const handleGenerateQuiz = async () => {
-    if (!selectedDoc) return toast.error("Vui lòng chọn tài liệu");
+    if (selectedDocIds.length === 0) {
+      toast.error("Vui lòng chọn ít nhất 1 tài liệu");
+      return;
+    }
+    if (selectedDocIds.length > MAX_QUIZ_DOCS) {
+      toast.error(`Trắc nghiệm tối đa ${MAX_QUIZ_DOCS} tài liệu`);
+      return;
+    }
     setIsGenerating(true);
     try {
-      const response = await quizApi.generate(Number(selectedDoc), numQuestions);
+      const response = await quizApi.generate(selectedDocIds, numQuestions);
       const quizData = response.data.data;
 
       const mappedQuestions = quizData.questions.map((q: any) => ({
@@ -119,14 +139,14 @@ const QuizEngine: React.FC = () => {
         options: [q.optionA, q.optionB, q.optionC, q.optionD],
       }));
 
-      // Reset state cũ (currentStep, userAnswers) trước khi set đề mới
       resetQuizFlow();
       setQuestions(mappedQuestions);
       setQuizId(quizData.id);
+      setQuizSourceIds((quizData as any).sourceDocumentIds ?? selectedDocIds);
       setQuizReady(true);
       toast.success("AI đã soạn đề xong!");
-    } catch (err) {
-      toast.error("AI đang bận, vui lòng thử lại sau ít phút");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "AI đang bận, vui lòng thử lại sau ít phút");
     } finally {
       setIsGenerating(false);
     }
@@ -147,8 +167,6 @@ const QuizEngine: React.FC = () => {
       const response = await quizApi.submit(quizId, formattedAnswers);
       const data = response.data.data;
       setResult(data);
-      // Không show toast failover ở đây — badge amber trong RoadmapView đã hiển thị
-      // trạng thái AI dự phòng một cách friendly. Duplicate notification vi phạm UX.
     } catch (err) {
       toast.error("Nộp bài thất bại");
     } finally {
@@ -169,7 +187,6 @@ const QuizEngine: React.FC = () => {
     }
   };
 
-  // LOGIC: Làm lại chính bộ đề vừa làm xong (giữ nguyên questions + quizId)
   const handleRetakeCurrent = () => {
     setResult(null);
     setCurrentStep(0);
@@ -179,39 +196,35 @@ const QuizEngine: React.FC = () => {
     toast.success("Bắt đầu ôn luyện lại bộ đề vừa rồi!");
   };
 
-  // LOGIC: Reset về setup screen để tạo đề mới từ đầu (dùng cho footer CTA)
   const handleStartFresh = (): void => {
     resetQuizFlow();
     navigate("/quizzes");
   };
 
-  // LOGIC: One-click targeted practice — AI sinh quiz tập trung chủ đề, skip setup.
-  // UX: persistent full-screen overlay từ lúc click đến khi transition xong,
-  // không dùng toast ephemeral (vì operation 3-5s > ngưỡng "feedback sau 1s" của NN/g).
   const handleTargetedPractice = async (topicHint: string): Promise<void> => {
-    // Lấy docId: ưu tiên selectedDoc đã chọn khi tạo quiz, fallback lookup từ quiz
-    let docId: number | null = selectedDoc ? Number(selectedDoc) : null;
+    let sourceIds: number[] = selectedDocIds.length > 0 ? selectedDocIds : quizSourceIds;
 
-    if (!docId && result?.quizId) {
+    if (sourceIds.length === 0 && result?.quizId) {
       try {
         const quizDetail = await quizApi.getQuizById(result.quizId);
-        docId = (quizDetail.data.data as any)?.documentId ?? null;
+        const detailData = quizDetail.data.data as any;
+        sourceIds = detailData?.sourceDocumentIds
+          ?? (detailData?.documentId ? [detailData.documentId] : []);
       } catch {
-        docId = null;
+        sourceIds = [];
       }
     }
 
-    if (!docId) {
+    if (sourceIds.length === 0) {
       toast.error("Không xác định được tài liệu gốc. Vui lòng tạo đề mới thủ công.");
       handleStartFresh();
       return;
     }
 
-    // Show persistent overlay NGAY LẬP TỨC (<1ms feedback)
     setTargetedLoadingTopic(topicHint);
 
     try {
-      const response = await quizApi.generate(docId, 5, topicHint);
+      const response = await quizApi.generate(sourceIds, 5, topicHint);
       const quizData = response.data.data;
 
       const mappedQuestions = quizData.questions.map((q: any) => ({
@@ -219,13 +232,13 @@ const QuizEngine: React.FC = () => {
         options: [q.optionA, q.optionB, q.optionC, q.optionD],
       }));
 
-      // Reset + chuyển thẳng vào màn làm bài, skip setup + preview
       setResult(null);
       setQuestions(mappedQuestions);
       setQuizId(quizData.id);
+      setQuizSourceIds((quizData as any).sourceDocumentIds ?? sourceIds);
       setCurrentStep(0);
       setUserAnswers({});
-      setSelectedDoc(String(docId));
+      setSelectedDocIds(sourceIds);
       setQuizReady(false);
       setQuizStarted(true);
       toast.success(`Bắt đầu luyện tập: ${topicHint}`, { duration: 2500 });
@@ -236,32 +249,83 @@ const QuizEngine: React.FC = () => {
     }
   };
 
-  // --- 1. MÀN HÌNH THIẾT LẬP (SETUP) ---
   if (!quizReady && !quizStarted) {
     return (
       <div className="flex min-h-[calc(100vh-64px)] items-center justify-center p-6">
-        <div className="w-full max-w-xl rounded-[2.5rem] bg-white p-10 shadow-2xl border border-slate-100">
+        <div className="w-full max-w-2xl rounded-[2.5rem] bg-white p-10 shadow-2xl border border-slate-100">
           <div className="mb-10 text-center">
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-200">
               <BrainCircuit size={32} />
             </div>
             <h1 className="text-3xl font-black text-slate-900">Trình tạo trắc nghiệm</h1>
-            <p className="text-slate-500 font-medium mt-2">Cấu hình bộ đề thi cá nhân hóa từ AI</p>
+            <p className="text-slate-500 font-medium mt-2">
+              Chọn tối đa {MAX_QUIZ_DOCS} tài liệu, AI sẽ tổng hợp ra đề ôn tập.
+            </p>
           </div>
 
           <div className="space-y-6">
             <div>
-              <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Tài liệu học tập</label>
-              <select
-                value={selectedDoc}
-                onChange={(e) => setSelectedDoc(e.target.value)}
-                className="w-full rounded-2xl border-2 border-slate-50 bg-slate-50 px-5 py-4 font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all"
-              >
-                <option value="">-- Chọn tài liệu --</option>
-                {docs.map((doc) => (
-                  <option key={doc.id} value={doc.id}>{doc.fileName}</option>
-                ))}
-              </select>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                  Tài liệu nguồn ({selectedDocIds.length}/{MAX_QUIZ_DOCS})
+                </label>
+                {selectedDocIds.length > 0 && (
+                  <button
+                    onClick={() => setSelectedDocIds([])}
+                    className="text-[10px] font-bold text-slate-400 uppercase hover:text-red-500"
+                  >
+                    Bỏ chọn hết
+                  </button>
+                )}
+              </div>
+              {docs.length === 0 ? (
+                <div className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+                  Bạn chưa có tài liệu nào. Hãy upload PDF ở trang Tài liệu trước.
+                </div>
+              ) : (
+                <div className="max-h-72 space-y-2 overflow-y-auto rounded-2xl border-2 border-slate-50 bg-slate-50 p-3">
+                  {docs.map((d) => {
+                    const isSelected = selectedDocIds.includes(d.id);
+                    const isDisabled = !isSelected && selectedDocIds.length >= MAX_QUIZ_DOCS;
+                    return (
+                      <button
+                        key={d.id}
+                        onClick={() => toggleSelectDoc(d.id)}
+                        disabled={isDisabled}
+                        className={`flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                          isSelected
+                            ? "border-blue-600 bg-white text-blue-900 shadow-sm"
+                            : isDisabled
+                              ? "border-slate-100 bg-white opacity-40 cursor-not-allowed"
+                              : "border-slate-100 bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-6 w-6 min-w-[24px] items-center justify-center rounded-md border-2 text-xs font-black ${
+                            isSelected
+                              ? "border-blue-600 bg-blue-600 text-white"
+                              : "border-slate-200 bg-white"
+                          }`}
+                        >
+                          {isSelected ? "✓" : ""}
+                        </span>
+                        <FileText className="h-4 w-4 text-slate-400" />
+                        <span className="flex-1 truncate text-sm font-bold text-slate-700" title={d.fileName}>
+                          {d.fileName}
+                        </span>
+                        {d.subjectName && (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white"
+                            style={{ backgroundColor: d.subjectId ? "#3b82f6" : "#94a3b8" }}
+                          >
+                            {d.subjectName}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
@@ -281,7 +345,7 @@ const QuizEngine: React.FC = () => {
 
             <button
               onClick={handleGenerateQuiz}
-              disabled={isGenerating || !selectedDoc}
+              disabled={isGenerating || selectedDocIds.length === 0}
               className="mt-6 flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-5 text-lg font-black text-white hover:bg-blue-600 transition-all shadow-xl disabled:bg-slate-200"
             >
               {isGenerating ? <RefreshCw className="h-6 w-6 animate-spin" /> : <><Sparkles size={20} /> SOẠN ĐỀ VỚI AI</>}
@@ -292,8 +356,10 @@ const QuizEngine: React.FC = () => {
     );
   }
 
-  // --- 2. MÀN HÌNH PREVIEW ---
   if (quizReady && !quizStarted) {
+    const previewNames = docs
+      .filter((d) => selectedDocIds.includes(d.id))
+      .map((d) => d.fileName);
     return (
       <div className="flex min-h-[calc(100vh-64px)] items-center justify-center p-6">
         <div className="w-full max-w-xl rounded-[2.5rem] bg-white p-10 shadow-2xl border-2 border-blue-600 animate-in zoom-in-95 duration-300">
@@ -306,11 +372,18 @@ const QuizEngine: React.FC = () => {
           </div>
 
           <div className="space-y-4 bg-slate-50 p-6 rounded-3xl mb-8">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-400 uppercase">Tài liệu</span>
-              <span className="text-sm font-black text-slate-700 max-w-[200px] truncate">{docs.find((d) => String(d.id) === selectedDoc)?.fileName}</span>
+            <div>
+              <span className="text-xs font-bold text-slate-400 uppercase">Tài liệu nguồn ({previewNames.length})</span>
+              <div className="mt-2 space-y-1">
+                {previewNames.map((n, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <FileText size={14} className="text-slate-400" />
+                    <span className="truncate">{n}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between border-t border-slate-200 pt-3">
               <span className="text-xs font-bold text-slate-400 uppercase">Số câu hỏi</span>
               <span className="text-sm font-black text-blue-600">{questions.length} câu</span>
             </div>
@@ -327,7 +400,6 @@ const QuizEngine: React.FC = () => {
     );
   }
 
-  // --- 3. MÀN HÌNH KẾT QUẢ ---
   if (result) {
     const wrongAnswers = (result.answers || []).filter((a) => !a.isCorrect);
 
@@ -337,7 +409,6 @@ const QuizEngine: React.FC = () => {
           <Loading message={`AI đang sinh bài tập tập trung về: ${targetedLoadingTopic}...`} />
         )}
         <div className="mx-auto max-w-4xl p-6 md:p-8 space-y-8 animate-in fade-in duration-500">
-        {/* Hero score */}
         <div className="overflow-hidden rounded-[2.5rem] bg-white shadow-2xl border border-slate-100">
           <div className="bg-slate-900 px-8 py-14 text-center text-white">
             <Trophy className="mx-auto mb-5 h-16 w-16 text-yellow-400" />
@@ -360,7 +431,6 @@ const QuizEngine: React.FC = () => {
           </div>
         </div>
 
-        {/* Roadmap (đã có sẵn từ submit response) */}
         <RoadmapView
           roadmap={result.roadmap}
           servedBy={result.roadmapServedBy}
@@ -368,7 +438,6 @@ const QuizEngine: React.FC = () => {
           onStartFresh={handleStartFresh}
         />
 
-        {/* Feedback markdown - tùy chọn, on demand */}
         <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-black flex items-center gap-2">
@@ -395,7 +464,6 @@ const QuizEngine: React.FC = () => {
           )}
         </div>
 
-        {/* Chi tiết câu sai */}
         {wrongAnswers.length > 0 && (
           <div className="space-y-6">
             <h3 className="text-2xl font-black text-slate-800 ml-2 flex items-center gap-3">
@@ -474,7 +542,6 @@ const QuizEngine: React.FC = () => {
           </div>
         )}
 
-        {/* Action buttons */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
           <button
             onClick={handleRetakeCurrent}
@@ -500,7 +567,6 @@ const QuizEngine: React.FC = () => {
     );
   }
 
-  // --- 4. MÀN HÌNH ĐANG LÀM BÀI ---
   const q = questions[currentStep];
   return (
     <>

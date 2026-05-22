@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   FileText,
   BookOpen,
+  BookMarked,
   History,
   LogOut,
   GraduationCap,
@@ -56,6 +57,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, closeMobile }) => {
 
   const studentItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Bảng điều khiển" },
+    { to: "/subjects", icon: BookMarked, label: "Môn học" },
     { to: "/documents", icon: FileText, label: "Tài liệu của tôi" },
     { to: "/quizzes", icon: BookOpen, label: "Trắc nghiệm AI" },
     { to: "/quiz-history", icon: History, label: "Lịch sử ôn tập" },

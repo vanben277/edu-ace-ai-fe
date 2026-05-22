@@ -6,7 +6,10 @@ import { Menu } from "lucide-react"; // Thêm icon Menu
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Documents from "./pages/Documents";
+import Subjects from "./pages/Subjects";
+import SubjectDetail from "./pages/SubjectDetail";
 import StudyWorkspace from "./pages/StudyWorkspace";
+import MultiDocStudy from "./pages/MultiDocStudy";
 import QuizEngine from "./pages/QuizEngine";
 import QuizHistory from "./pages/QuizHistory";
 import Login from "./pages/Login";
@@ -98,8 +101,11 @@ const App: React.FC = () => {
           <Route path="/login" element={<Login />} />
           
           <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          <Route path="/subjects" element={<PrivateRoute><Subjects /></PrivateRoute>} />
+          <Route path="/subjects/:id" element={<PrivateRoute><SubjectDetail /></PrivateRoute>} />
           <Route path="/documents" element={<PrivateRoute><Documents /></PrivateRoute>} />
           <Route path="/study/:docId" element={<PrivateRoute><StudyWorkspace /></PrivateRoute>} />
+          <Route path="/study-multi" element={<PrivateRoute><MultiDocStudy /></PrivateRoute>} />
           <Route path="/quizzes" element={<PrivateRoute><QuizEngine /></PrivateRoute>} />
           <Route path="/quiz-history" element={<PrivateRoute><QuizHistory /></PrivateRoute>} />
 

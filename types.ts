@@ -29,8 +29,25 @@ export interface Document {
   fileType: string;
   fileSize: number;
   ownerCode?: string;
+  subjectId?: number | null;
+  subjectName?: string | null;
   createdAt: string;
   content?: string;
+}
+
+export interface Subject {
+  id: number;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  documentCount: number;
+  createdAt: string;
+}
+
+export interface SubjectInput {
+  name: string;
+  description?: string;
+  color?: string;
 }
 
 // LearningRoadmap structured output từ AI (khớp với LearningRoadmapResponse.java)
@@ -93,7 +110,9 @@ export interface QuestionResponse {
 export interface QuizResponse {
   id: number;
   title: string;
-  documentId: number;
+  documentId: number | null;
+  sourceDocumentIds: number[];
+  sourceDocumentNames: string[];
   questions: QuestionResponse[];
   createdAt: string;
 }
@@ -138,6 +157,7 @@ export interface QuizHistoryResponse {
   correctAnswers: number;
   totalQuestions: number;
   completedAt: string;
+  sourceDocumentIds: number[];
 }
 
 export interface InteractionResponse {
