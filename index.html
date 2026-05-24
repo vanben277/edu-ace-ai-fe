@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EduAce AI - Trợ lý học tập thông minh</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <link rel="shortcut icon" href="./icons/icon.png" type="image/x-icon" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,8 +16,33 @@
       body {
         font-family: "Inter", sans-serif;
       }
+      /* Đảm bảo code block trong chat (markdown ```) luôn scroll ngang thay vì tràn/cắt khung.
+         Fallback bằng CSS thuần — chạy kể cả khi typography plugin không load kịp. */
+      .prose pre,
+      .markdown-body pre {
+        overflow-x: auto;
+        max-width: 100%;
+        white-space: pre;
+        /* ~14px theo chuẩn readability cho code (>=12px), rem để scale theo zoom user */
+        font-size: 0.875rem;
+        line-height: 1.55;
+      }
+      .prose code {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        font-size: 0.875rem;
+      }
+      .prose pre code {
+        overflow-wrap: normal;
+        word-break: normal;
+        white-space: pre;
+        font-size: inherit;
+      }
       ::-webkit-scrollbar {
         width: 6px;
+      }
+      ::-webkit-scrollbar:horizontal {
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;

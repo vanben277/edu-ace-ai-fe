@@ -18,13 +18,12 @@ import SystemDocuments from "./pages/admin/SystemDocuments";
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
-  const [isMobileOpen, setIsMobileOpen] = useState(false); // Quản lý Menu Mobile
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const isAuthPage = location.pathname === "/login";
   const isStudyPage = location.pathname.startsWith("/study/");
   const isAuthenticated = !!localStorage.getItem("access_token");
 
-  // Nếu là trang Login hoặc chưa đăng nhập, không hiện Sidebar/Header
   if (isAuthPage || !isAuthenticated) return <>{children}</>;
 
   const getUserChar = () => {

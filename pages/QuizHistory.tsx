@@ -28,7 +28,6 @@ const QuizHistory: React.FC = () => {
             const response = await quizApi.getHistory();
             const data = response.data.data || [];
 
-            // SẮP XẾP TẠI ĐÂY: Mới nhất lên đầu
             const sortedData = [...data].sort((a, b) => {
                 return new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime();
             });
@@ -46,7 +45,6 @@ const QuizHistory: React.FC = () => {
         setAiFeedback(null);
         try {
             const response = await quizApi.getResult(resultId);
-            // KHỚP VỚI POSTMAN: lấy response.data.data
             if (response.data && response.data.data) {
                 setSelectedResult(response.data.data);
             }
@@ -167,7 +165,6 @@ const QuizHistory: React.FC = () => {
                                 {/* 2. Danh sách 4 đáp án (A, B, C, D) hiển thị đầy đủ nội dung chữ */}
                                 <div className="grid grid-cols-1 gap-4 mb-8">
                                     {['A', 'B', 'C', 'D'].map((label) => {
-                                        // Lấy nội dung chữ từ Backend gửi về (optionA, optionB...)
                                         const optionText = answer[`option${label}`];
 
                                         const isSelected = answer.selectedOption === label;

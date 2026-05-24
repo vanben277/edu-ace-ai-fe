@@ -9,7 +9,7 @@ import {
   Trash2,
   ExternalLink,
 } from "lucide-react";
-import { adminApi, documentApi } from "../../services/api"; // Import thêm documentApi để dùng hàm delete
+import { adminApi, documentApi } from "../../services/api";
 import { Document } from "../../types";
 import toast from "react-hot-toast";
 
@@ -23,7 +23,6 @@ const SystemDocuments: React.FC = () => {
     setLoading(true);
     try {
       const response = await adminApi.getAllSystemDocuments();
-      // Đảm bảo dữ liệu trả về là mảng để tránh lỗi .filter
       setDocs(response.data.data || []);
     } catch (err) {
       toast.error("Không thể tải danh sách tài liệu hệ thống");
@@ -37,7 +36,6 @@ const SystemDocuments: React.FC = () => {
     fetchAllDocs();
   }, []);
 
-  // LOGIC XOÁ TÀI LIỆU (Gọi sang DocumentController của BE)
   const handleDeleteDoc = async (id: number, fileName: string) => {
     const isConfirm = window.confirm(
       `XÁC NHẬN XOÁ HỆ THỐNG:\n"${fileName}"\n\nHành động này sẽ xoá vĩnh viễn tệp và các dữ liệu AI liên quan.`
@@ -45,16 +43,12 @@ const SystemDocuments: React.FC = () => {
 
     if (isConfirm) {
       try {
-        // Sử dụng documentApi.delete (khớp với @DeleteMapping("/{id}") trong DocumentController)
         await documentApi.delete(id);
 
         toast.success("Xoá tài liệu thành công!");
 
-        // Cập nhật State ngay tại chỗ để tài liệu biến mất khỏi bảng mà không cần load lại trang
         setDocs((prev) => prev.filter((d) => d.id !== id));
       } catch (err: any) {
-        // Nếu bạn đã sửa Interceptor trong api.ts như mình hướng dẫn trước đó, 
-        // lỗi 403 ở đây sẽ chỉ hiện thông báo lỗi chứ không bị logout.
         const errorMsg = err.response?.data?.message || "Bạn không có quyền xoá hoặc lỗi hệ thống";
         toast.error(errorMsg);
       }

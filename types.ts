@@ -173,3 +173,31 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
+export interface ConversationMessageDto {
+  id: number;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  createdAt: string;
+}
+
+export interface ConversationSummary {
+  id: number;
+  title: string;
+  subjectId: number | null;
+  sourceDocumentIds: number[];
+  messageCount: number;
+  lastMessagePreview: string;
+  updatedAt: string;
+}
+
+export interface ConversationDetail {
+  id: number;
+  title: string;
+  subjectId: number | null;
+  sourceDocumentIds: number[];
+  sourceDocumentNames: string[];
+  messages: ConversationMessageDto[];
+  createdAt: string;
+  updatedAt: string;
+}

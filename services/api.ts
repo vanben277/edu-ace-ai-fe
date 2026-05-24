@@ -1,4 +1,3 @@
-// services/api.ts
 import axios from "axios";
 import {
   ApiResponse,
@@ -12,6 +11,9 @@ import {
   InteractionResponse,
   Subject,
   SubjectInput,
+  ConversationDetail,
+  ConversationSummary,
+  ConversationMessageDto,
   User,
 } from "../types";
 
@@ -32,7 +34,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // CHỈ ĐĂNG XUẤT KHI GẶP LỖI 401 (Hết hạn Token)
     if (error.response?.status === 401) {
       localStorage.removeItem("access_token");
       localStorage.removeItem("user");
@@ -73,6 +74,19 @@ export const subjectApi = {
   delete: (id: number) => api.delete<ApiResponse<any>>(`/subjects/${id}`),
 };
 
+export const conversationApi = {
+  start: (data: { documentIds: number[]; message: string; subjectId?: number }) =>
+    api.post<ApiResponse<ConversationDetail>>("/conversations/start", data),
+  ask: (id: number, message: string) =>
+    api.post<ApiResponse<ConversationMessageDto>>(`/conversations/${id}/ask`, { message }),
+  list: (subjectId?: number) =>
+    api.get<ApiResponse<ConversationSummary[]>>("/conversations", {
+      params: subjectId != null ? { subjectId } : {},
+    }),
+  getDetail: (id: number) => api.get<ApiResponse<ConversationDetail>>(`/conversations/${id}`),
+  delete: (id: number) => api.delete<ApiResponse<any>>(`/conversations/${id}`),
+};
+
 export const aiApi = {
   chatGeneral: (message: string) => api.post<ApiResponse<string>>("/ai/chat", { message }),
   chatOnDocument: (documentId: number, message: string) => api.post<ApiResponse<string>>("/ai/chat-on-document", { documentId, message }),
@@ -86,10 +100,8 @@ export const quizApi = {
   getDashboard: () => api.get<ApiResponse<DashboardStats>>("/quizzes/dashboard"),
   generate: (documentIds: number[], numberOfQuestions: number, topicHint?: string) =>
     api.post<ApiResponse<Quiz>>("/quizzes/generate", { documentIds, numberOfQuestions, topicHint }),
-  // Submit giờ trả về QuizResultResponse có kèm roadmap + answers chi tiết + quizId
   submit: (quizId: number, answers: Record<number, string>) => api.post<ApiResponse<QuizResultResponse>>("/quizzes/submit", { quizId, answers }),
   getHistory: () => api.get<ApiResponse<QuizHistoryResponse[]>>("/quizzes/history"),
-  // getResult cũng trả về QuizResultResponse (thay cho QuizResultDetail cũ)
   getResult: (resultId: number) => api.get<ApiResponse<QuizResultResponse>>(`/quizzes/result/${resultId}`),
   getQuizById: (quizId: number) => api.get<ApiResponse<Quiz>>(`/quizzes/${quizId}`),
 };
@@ -98,12 +110,11 @@ export const adminApi = {
   getUsers: (params: any) => api.get<ApiResponse<User[]>>("/admin/users", { params }),
   getAllSystemDocuments: () => api.get<ApiResponse<Document[]>>("/admin/documents"),
   
-  // SỬA TẠI ĐÂY: Đổi tên và đường dẫn cho khớp với Controller Java
   toggleUserStatus: (userId: number) => 
     api.post<ApiResponse<any>>(`/admin/users/${userId}/toggle-status`),
 
   deleteDocument: (docId: number) => api.delete<ApiResponse<any>>(`/admin/documents/${docId}`),
 };
 
-import toast from "react-hot-toast"; // Đảm bảo import toast vào đây nếu dùng trong interceptor
+import toast from "react-hot-toast";
 export default api;

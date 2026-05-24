@@ -18,10 +18,9 @@ const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter States
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
-  const [enabled, setEnabled] = useState<string>("all"); // Mặc định là "all"
+  const [enabled, setEnabled] = useState<string>("all"); 
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortDir, setSortDir] = useState("desc");
 
@@ -30,7 +29,6 @@ const AdminUsers: React.FC = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      // Xử lý params chuẩn xác
       const params: any = {
         search: search || undefined,
         role: role || undefined,
@@ -38,13 +36,11 @@ const AdminUsers: React.FC = () => {
         sortDir,
       };
 
-      // Chỉ gửi enabled nếu không phải là "all"
       if (enabled === "true") params.enabled = true;
       if (enabled === "false") params.enabled = false;
 
       const response = await adminApi.getUsers(params);
 
-      // Đảm bảo data luôn là mảng
       const incomingData = response.data?.data;
       setUsers(Array.isArray(incomingData) ? incomingData : []);
 
@@ -60,11 +56,10 @@ const AdminUsers: React.FC = () => {
     const actionText = user.enabled ? "Khóa" : "Mở khóa";
     if (window.confirm(`Bạn có chắc chắn muốn ${actionText} tài khoản của ${user.fullName}?`)) {
       try {
-        // SỬA TẠI ĐÂY: Gọi đúng hàm toggleUserStatus
         await adminApi.toggleUserStatus(user.id);
 
         toast.success(`${actionText} thành công!`);
-        fetchUsers(); // Tải lại danh sách
+        fetchUsers(); 
       } catch (err: any) {
         toast.error(`Thao tác thất bại: ${err.response?.data?.message || "Lỗi hệ thống"}`);
       }

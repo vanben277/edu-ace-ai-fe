@@ -40,7 +40,6 @@ const Dashboard: React.FC = () => {
     const fetchDashboard = async () => {
       try {
         const response = await quizApi.getDashboard();
-        // Backend trả về: { message: "...", data: { totalDocuments, totalQuizzesTaken, averageScore, progressChart } }
         setStats(response.data.data);
       } catch (err) {
         toast.error('Không thể tải dữ liệu bảng điều khiển');
@@ -64,13 +63,13 @@ const Dashboard: React.FC = () => {
         />
         <StatCard 
           title="Bài trắc nghiệm đã làm" 
-          value={stats?.totalQuizzesTaken || 0} // Đã sửa field name
+          value={stats?.totalQuizzesTaken || 0} 
           icon={Award} 
           color="bg-emerald-500" 
         />
         <StatCard 
           title="Điểm trung bình" 
-          value={`${stats?.averageScore || 0}/10`} // Thang điểm 10 theo BE
+          value={`${stats?.averageScore || 0}/10`} 
           icon={TrendingUp} 
           color="bg-indigo-500" 
         />

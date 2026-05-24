@@ -47,7 +47,6 @@ const Documents: React.FC = () => {
       const res = await subjectApi.list();
       setSubjects(res.data.data);
     } catch (err) {
-      // không chặn flow chính
     }
   };
 
@@ -100,7 +99,6 @@ const Documents: React.FC = () => {
   };
 
   const stageFilesForUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Snapshot FileList vào Array TRƯỚC khi clear input (FileList là live collection)
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
@@ -143,7 +141,6 @@ const Documents: React.FC = () => {
       setUploadModalOpen(false);
       setPendingFiles([]);
 
-      // Nếu user chọn môn → đề xuất mở thẳng workspace môn đó
       if (pendingSubjectId) {
         navigate(`/subjects/${pendingSubjectId}`);
         return;

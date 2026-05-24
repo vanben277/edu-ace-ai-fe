@@ -17,15 +17,17 @@ import {
   X,
   RefreshCw,
   Pencil,
+  Search,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { aiApi, documentApi, quizApi, subjectApi } from "../services/api";
+import { aiApi, conversationApi, documentApi, quizApi, subjectApi } from "../services/api";
 import {
   Document,
   InteractionResponse,
   QuizHistoryResponse,
   Subject,
   SubjectInput,
+  ConversationSummary,
 } from "../types";
 
 const DEFAULT_COLORS = [
@@ -34,7 +36,6 @@ const DEFAULT_COLORS = [
 ];
 const MAX_UPLOAD_FILES = 4;
 const MAX_QUIZ_DOCS = 3;
-const MAX_CHAT_DOCS = 4;
 
 type Tab = "docs" | "chats" | "quizzes";
 
@@ -51,12 +52,20 @@ const SubjectDetail: React.FC = () => {
   const [subject, setSubject] = useState<Subject | null>(null);
   const [docs, setDocs] = useState<Document[]>([]);
   const [chats, setChats] = useState<FlatInteraction[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [quizzes, setQuizzes] = useState<QuizHistoryResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState<Tab>("docs");
   const [editing, setEditing] = useState(false);
+  const [docSearch, setDocSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredDocs = useMemo(() => {
+    const term = docSearch.trim().toLowerCase();
+    if (!term) return docs;
+    return docs.filter((d) => d.fileName.toLowerCase().includes(term));
+  }, [docs, docSearch]);
 
   useEffect(() => {
     if (!subjectId || Number.isNaN(subjectId)) {
@@ -69,24 +78,24 @@ const SubjectDetail: React.FC = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [subjectRes, docsRes, quizRes] = await Promise.all([
+      const [subjectRes, docsRes, quizRes, convRes] = await Promise.all([
         subjectApi.getById(subjectId),
         documentApi.getAll({ subjectId }),
         quizApi.getHistory(),
+        conversationApi.list(subjectId).catch(() => null),
       ]);
       const subj = subjectRes.data.data;
       const docList = docsRes.data.data;
       setSubject(subj);
       setDocs(docList);
+      setConversations(convRes?.data.data ?? []);
 
-      // Filter quiz history theo docs trong môn
       const docIdSet = new Set(docList.map((d) => d.id));
       const subjectQuizzes = (quizRes.data.data ?? []).filter((q) =>
         q.sourceDocumentIds?.some((sid) => docIdSet.has(sid))
       );
       setQuizzes(subjectQuizzes);
 
-      // Fetch chat history cho từng doc, gộp lại
       if (docList.length > 0) {
         const allChats = await Promise.all(
           docList.map((d) =>
@@ -165,17 +174,25 @@ const SubjectDetail: React.FC = () => {
     }
   };
 
+  const handleDeleteConversation = async (convId: number, title: string) => {
+    if (!window.confirm(`Xóa phiên chat "${title}"? Không khôi phục được.`)) return;
+    try {
+      await conversationApi.delete(convId);
+      toast.success("Đã xóa phiên chat");
+      await fetchAll();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Không xóa được phiên chat");
+    }
+  };
+
   const handleStartMultiChat = () => {
     if (docs.length === 0) {
       toast.error("Môn này chưa có tài liệu để chat");
       return;
     }
-    const usable = docs.slice(0, MAX_CHAT_DOCS);
-    if (docs.length > MAX_CHAT_DOCS) {
-      toast(`Chỉ chat với ${MAX_CHAT_DOCS} tài liệu đầu (giới hạn hệ thống)`, { icon: "ℹ️" });
-    }
-    const ids = usable.map((d) => d.id).join(",");
-    navigate(`/study-multi?docIds=${ids}`);
+
+    const ids = docs.map((d) => d.id).join(",");
+    navigate(`/study-multi?docIds=${ids}&subjectId=${subjectId}`);
   };
 
   const handleStartQuiz = () => {
@@ -183,11 +200,7 @@ const SubjectDetail: React.FC = () => {
       toast.error("Môn này chưa có tài liệu để tạo quiz");
       return;
     }
-    const usable = docs.slice(0, MAX_QUIZ_DOCS);
-    if (docs.length > MAX_QUIZ_DOCS) {
-      toast(`Quiz chỉ dùng ${MAX_QUIZ_DOCS} tài liệu đầu. Bạn có thể đổi ở trang Quiz.`, { icon: "ℹ️" });
-    }
-    const ids = usable.map((d) => d.id).join(",");
+    const ids = docs.map((d) => d.id).join(",");
     navigate(`/quizzes?docIds=${ids}`);
   };
 
@@ -314,7 +327,7 @@ const SubjectDetail: React.FC = () => {
               className="flex items-center justify-center gap-2 rounded-2xl border-2 border-slate-100 bg-white px-4 py-4 text-sm font-black text-slate-700 hover:border-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <MessageSquareText size={18} />
-              Chat với cả môn ({Math.min(docs.length, MAX_CHAT_DOCS)} tài liệu)
+              Chat với cả môn ({docs.length} tài liệu)
             </button>
             <button
               onClick={handleStartQuiz}
@@ -329,13 +342,26 @@ const SubjectDetail: React.FC = () => {
 
         <div className="mb-6 flex gap-1 rounded-2xl bg-white p-1 shadow-sm border border-slate-100 w-fit">
           <TabBtn active={tab === "docs"} onClick={() => setTab("docs")} label="Tài liệu" count={docs.length} />
-          <TabBtn active={tab === "chats"} onClick={() => setTab("chats")} label="Lịch sử chat" count={chats.length} />
+          <TabBtn active={tab === "chats"} onClick={() => setTab("chats")} label="Lịch sử chat" count={conversations.length + chats.length} />
           <TabBtn active={tab === "quizzes"} onClick={() => setTab("quizzes")} label="Quiz đã làm" count={quizzes.length} />
         </div>
 
         {tab === "docs" && (
+          <>
+          {docs.length > 10 && (
+            <div className="relative mb-4 max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={docSearch}
+                onChange={(e) => setDocSearch(e.target.value)}
+                placeholder="Tìm tài liệu trong môn này..."
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {docs.map((d) => (
+            {filteredDocs.map((d) => (
               <div
                 key={d.id}
                 className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 transition-all hover:shadow-md"
@@ -390,11 +416,17 @@ const SubjectDetail: React.FC = () => {
               />
             </label>
           </div>
+          {filteredDocs.length === 0 && docSearch.trim() && (
+            <p className="mt-4 text-center text-sm text-slate-400">
+              Không tìm thấy tài liệu khớp "{docSearch}".
+            </p>
+          )}
+          </>
         )}
 
         {tab === "chats" && (
           <div className="space-y-3">
-            {chats.length === 0 ? (
+            {conversations.length === 0 && chats.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 py-16 text-center">
                 <MessageSquareText className="h-8 w-8 text-slate-300 mb-3" />
                 <h3 className="text-base font-bold text-slate-700">Chưa có chat nào trong môn này</h3>
@@ -411,34 +443,85 @@ const SubjectDetail: React.FC = () => {
               </div>
             ) : (
               <>
-                {chats.slice(0, 30).map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => navigate(`/study/${c.docId}`)}
-                    className="w-full text-left flex items-start justify-between rounded-2xl border border-slate-200 bg-white p-5 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start gap-4 min-w-0 flex-1">
-                      <div className="rounded-lg bg-purple-50 p-2 text-purple-600 shrink-0">
-                        <MessageSquareText className="h-5 w-5" />
+                {conversations.length > 0 && (
+                  <>
+                    <p className="px-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Phiên chat đa tài liệu
+                    </p>
+                    {conversations.map((c) => (
+                      <div
+                        key={`conv-${c.id}`}
+                        onClick={() => navigate(`/study-multi?conversationId=${c.id}`)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") navigate(`/study-multi?conversationId=${c.id}`);
+                        }}
+                        className="group w-full text-left flex items-start justify-between rounded-2xl border border-slate-200 bg-white p-5 hover:shadow-md transition-all cursor-pointer"
+                      >
+                        <div className="flex items-start gap-4 min-w-0 flex-1">
+                          <div className="rounded-lg bg-purple-50 p-2 text-purple-600 shrink-0">
+                            <MessageSquareText className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-bold text-slate-900 line-clamp-1">{c.title}</h3>
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-1">{c.lastMessagePreview}</p>
+                            <p className="text-[11px] text-slate-400 mt-1">
+                              {c.sourceDocumentIds.length} tài liệu • {c.messageCount} tin nhắn •{" "}
+                              {formatRelative(new Date(c.updatedAt))}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteConversation(c.id, c.title);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition-all shrink-0 ml-2"
+                          title="Xóa phiên chat"
+                          aria-label="Xóa phiên chat"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-slate-900 line-clamp-1">{c.question}</h3>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-1">
-                          📄 {c.docName} • {formatRelative(new Date(c.createdAt))}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-                {chats.length > 0 && (
-                  <button
-                    onClick={handleStartMultiChat}
-                    className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 p-4 text-slate-400 hover:border-purple-600 hover:text-purple-600 hover:bg-purple-50/30 transition-all"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span className="text-sm font-bold">Bắt đầu chat đa tài liệu mới</span>
-                  </button>
+                    ))}
+                  </>
                 )}
+
+                {chats.length > 0 && (
+                  <>
+                    <p className="px-1 pt-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Chat từng tài liệu
+                    </p>
+                    {chats.slice(0, 30).map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => navigate(`/study/${c.docId}`)}
+                        className="w-full text-left flex items-start justify-between rounded-2xl border border-slate-200 bg-white p-5 hover:shadow-md transition-all"
+                      >
+                        <div className="flex items-start gap-4 min-w-0 flex-1">
+                          <div className="rounded-lg bg-blue-50 p-2 text-blue-600 shrink-0">
+                            <MessageSquareText className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-bold text-slate-900 line-clamp-1">{c.question}</h3>
+                            <p className="text-xs text-slate-400 mt-1 line-clamp-1">
+                              📄 {c.docName} • {formatRelative(new Date(c.createdAt))}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                <button
+                  onClick={handleStartMultiChat}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 p-4 text-slate-400 hover:border-purple-600 hover:text-purple-600 hover:bg-purple-50/30 transition-all"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span className="text-sm font-bold">Bắt đầu chat đa tài liệu mới</span>
+                </button>
               </>
             )}
           </div>

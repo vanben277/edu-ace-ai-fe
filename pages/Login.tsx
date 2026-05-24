@@ -14,7 +14,6 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // 1. Tự động chuyển hướng nếu đã đăng nhập rồi
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     const userStr = localStorage.getItem("user");
@@ -28,19 +27,17 @@ const Login: React.FC = () => {
           navigate("/dashboard", { replace: true });
         }
       } catch (e) {
-        localStorage.clear(); // Nếu dữ liệu local cũ bị lỗi thì xóa hết
+        localStorage.clear(); 
       }
     }
   }, [navigate]);
 
-  // 2. Xử lý gửi Form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
       if (isLogin) {
-        // LUỒNG ĐĂNG NHẬP
         const response = await authApi.login({
           studentCode: formData.studentCode,
           password: formData.password
@@ -48,14 +45,12 @@ const Login: React.FC = () => {
 
         const authData = response.data.data;
 
-        // KIỂM TRA TÀI KHOẢN CÓ ĐANG BỊ KHÓA KHÔNG
         if (authData.enabled === false) {
           toast.error("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên!");
           setLoading(false);
           return;
         }
 
-        // LƯU THÔNG TIN VÀO LOCAL STORAGE
         localStorage.setItem("access_token", authData.token);
         localStorage.setItem(
           "user",
@@ -69,25 +64,22 @@ const Login: React.FC = () => {
 
         toast.success(`Chào mừng trở lại, ${authData.fullName}!`);
 
-        // ĐIỀU HƯỚNG THEO VAI TRÒ
         if (authData.role === "ADMIN") {
           navigate("/admin/users");
         } else {
           navigate("/dashboard");
         }
       } else {
-        // LUỒNG ĐĂNG KÝ
         await authApi.register({
           studentCode: formData.studentCode,
           fullName: formData.fullName,
           password: formData.password
         });
         toast.success("Đã tạo tài khoản thành công! Bây giờ bạn có thể đăng nhập.");
-        setIsLogin(true); // Chuyển về màn hình đăng nhập
-        setFormData({ ...formData, password: "" }); // Xóa pass cũ cho an toàn
+        setIsLogin(true); 
+        setFormData({ ...formData, password: "" });
       }
     } catch (err: any) {
-      // XỬ LÝ LỖI TỪ BACKEND
       if (err.response?.status === 403) {
         toast.error("Truy cập bị từ chối: Tài khoản này đã bị cấm!");
       } else {

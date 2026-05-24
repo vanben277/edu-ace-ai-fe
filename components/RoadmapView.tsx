@@ -13,24 +13,11 @@ import { LearningRoadmapResponse } from "../types";
 interface RoadmapViewProps {
   roadmap: LearningRoadmapResponse | null | undefined;
   servedBy?: string | null;
-  /**
-   * Callback khi user click vào weak topic card — one-click targeted practice.
-   * Nếu có callback: parent tự gọi API sinh quiz tập trung chủ đề và chuyển màn.
-   * Nếu không: fallback navigate về /quizzes (ví dụ khi render trong QuizHistory).
-   */
+  
   onTargetedPractice?: (topicHint: string) => void;
-  /**
-   * Callback khi user click footer banner "Bắt đầu" — tạo đề mới bình thường.
-   * Nếu có callback: parent reset state trước khi chuyển màn.
-   * Nếu không: fallback navigate về /quizzes.
-   */
+
   onStartFresh?: () => void;
 }
-
-// Failover badge intentionally KHÔNG render cho end user để tránh alert fatigue.
-// Consensus NN/g + LLM Fallback 2026: persistent degraded state nên hide khỏi UI chính,
-// expose qua /api/public/ai-health cho dev/admin giám sát thay vì spam user mỗi submit.
-// Prop `servedBy` vẫn giữ trong interface để backward-compat nhưng không hiển thị.
 
 const priorityStyles: Record<string, { bg: string; text: string; label: string }> = {
   CAO: { bg: "bg-red-100", text: "text-red-700", label: "Ưu tiên cao" },

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Send,
@@ -8,48 +8,93 @@ import {
   Bot,
   RefreshCw,
   FileText,
-  X,
+  Check,
+  Search,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import toast from "react-hot-toast";
-import { aiApi, documentApi } from "../services/api";
-import { Document, ChatMessage } from "../types";
+import { conversationApi, documentApi } from "../services/api";
+import { ChatMessage } from "../types";
+
+const MAX_ACTIVE_SOURCES = 4;
+
+interface SourceChip {
+  id: number;
+  fileName: string;
+}
 
 const MultiDocStudy: React.FC = () => {
   const [searchParams] = useSearchParams();
   const docIdsParam = searchParams.get("docIds") || "";
+  const conversationIdParam = searchParams.get("conversationId");
+  const subjectIdParam = searchParams.get("subjectId");
+
   const initialIds = docIdsParam
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isFinite(n) && n > 0);
 
-  const [docs, setDocs] = useState<Document[]>([]);
-  const [activeIds, setActiveIds] = useState<number[]>(initialIds);
+  const [sources, setSources] = useState<SourceChip[]>([]);
+  const [activeIds, setActiveIds] = useState<number[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(
+    conversationIdParam ? Number(conversationIdParam) : null
+  );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [chipSearch, setChipSearch] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const visibleSources = useMemo(() => {
+    const term = chipSearch.trim().toLowerCase();
+    if (!term) return sources;
+    return sources.filter((d) => d.fileName.toLowerCase().includes(term));
+  }, [sources, chipSearch]);
+
+  const sourcesLocked = conversationId != null;
+
   useEffect(() => {
-    if (initialIds.length === 0) {
-      setLoading(false);
-      return;
-    }
-    const loadAll = async () => {
+    const load = async () => {
       try {
-        const results = await Promise.all(
-          initialIds.map((id) => documentApi.getById(id).then((r) => r.data.data))
-        );
-        setDocs(results);
+        if (conversationIdParam) {
+          const res = await conversationApi.getDetail(Number(conversationIdParam));
+          const detail = res.data.data;
+          const chips: SourceChip[] = detail.sourceDocumentIds.map((id, i) => ({
+            id,
+            fileName: detail.sourceDocumentNames[i] ?? `Tài liệu #${id}`,
+          }));
+          setSources(chips);
+          setActiveIds(detail.sourceDocumentIds);
+          setMessages(
+            detail.messages.map((m) => ({
+              id: m.id,
+              role: m.role === "USER" ? "user" : "assistant",
+              content: m.content,
+              timestamp: m.createdAt,
+            }))
+          );
+        } else if (initialIds.length > 0) {
+          const results = await Promise.allSettled(
+            initialIds.map((id) => documentApi.getById(id).then((r) => r.data.data))
+          );
+          const ok: SourceChip[] = [];
+          results.forEach((r) => {
+            if (r.status === "fulfilled" && r.value) {
+              ok.push({ id: r.value.id, fileName: r.value.fileName });
+            }
+          });
+          setSources(ok);
+          setActiveIds(ok.slice(0, MAX_ACTIVE_SOURCES).map((d) => d.id));
+        }
       } catch (err: any) {
-        toast.error(err.response?.data?.message || "Không tải được tài liệu");
+        toast.error(err.response?.data?.message || "Không tải được phiên chat");
       } finally {
         setLoading(false);
       }
     };
-    loadAll();
-  }, [docIdsParam]);
+    load();
+  }, [docIdsParam, conversationIdParam]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -58,9 +103,15 @@ const MultiDocStudy: React.FC = () => {
   }, [messages, sending]);
 
   const toggleActive = (id: number) => {
-    setActiveIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    if (sourcesLocked) return;
+    setActiveIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_ACTIVE_SOURCES) {
+        toast.error(`Tối đa ${MAX_ACTIVE_SOURCES} tài liệu mỗi cuộc chat. Bỏ bớt 1 file để chọn file khác.`);
+        return prev;
+      }
+      return [...prev, id];
+    });
   };
 
   const handleSend = async (e: React.FormEvent) => {
@@ -83,17 +134,36 @@ const MultiDocStudy: React.FC = () => {
     setSending(true);
 
     try {
-      const res = await aiApi.chatOnDocuments(activeIds, currentInput);
-      const aiMsg: ChatMessage = {
-        id: Date.now() + 1,
-        role: "assistant",
-        content: res.data.data,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      if (conversationId == null) {
+        const res = await conversationApi.start({
+          documentIds: activeIds,
+          message: currentInput,
+          subjectId: subjectIdParam ? Number(subjectIdParam) : undefined,
+        });
+        const detail = res.data.data;
+        setConversationId(detail.id);
+        const aiMessage = [...detail.messages].reverse().find((m) => m.role === "ASSISTANT");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: aiMessage?.id ?? Date.now() + 1,
+            role: "assistant",
+            content: aiMessage?.content ?? "(không có phản hồi)",
+            timestamp: aiMessage?.createdAt ?? new Date().toISOString(),
+          },
+        ]);
+      } else {
+        const res = await conversationApi.ask(conversationId, currentInput);
+        const m = res.data.data;
+        setMessages((prev) => [
+          ...prev,
+          { id: m.id, role: "assistant", content: m.content, timestamp: m.createdAt },
+        ]);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "AI không phản hồi");
       setInput(currentInput);
+      setMessages((prev) => prev.filter((msg) => msg.id !== userMsg.id));
     } finally {
       setSending(false);
     }
@@ -104,13 +174,13 @@ const MultiDocStudy: React.FC = () => {
       <div className="flex h-screen items-center justify-center bg-white">
         <RefreshCw className="animate-spin text-blue-600 mr-2" />
         <span className="font-bold text-slate-600 uppercase tracking-widest text-xs">
-          Đang tải tài liệu nguồn...
+          Đang tải phiên chat...
         </span>
       </div>
     );
   }
 
-  if (docs.length === 0) {
+  if (sources.length === 0) {
     return (
       <div className="flex flex-col h-[calc(100vh-64px)] items-center justify-center p-8 text-center">
         <div className="mb-4 rounded-full bg-slate-100 p-4">
@@ -135,7 +205,7 @@ const MultiDocStudy: React.FC = () => {
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
         <div className="flex items-center gap-3">
           <Link
-            to="/documents"
+            to={subjectIdParam ? `/subjects/${subjectIdParam}` : "/documents"}
             className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"
           >
             <ArrowLeft size={16} />
@@ -143,36 +213,65 @@ const MultiDocStudy: React.FC = () => {
           <div>
             <h1 className="text-base font-bold text-slate-900">Phiên chat đa tài liệu</h1>
             <p className="text-xs text-slate-500">
-              {activeIds.length}/{docs.length} tài liệu được chọn làm nguồn
+              {sourcesLocked
+                ? `${activeIds.length} tài liệu nguồn (đã lưu)`
+                : `Đã chọn ${activeIds.length}/${MAX_ACTIVE_SOURCES} nguồn` +
+                  (sources.length > activeIds.length ? ` • ${sources.length} tài liệu trong môn` : "")}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
-          <Bot size={14} /> Gia sư EduAce
+        <div className="flex items-center gap-3">
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={chipSearch}
+              onChange={(e) => setChipSearch(e.target.value)}
+              placeholder="Tìm tài liệu..."
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-3 text-xs focus:border-blue-500 focus:bg-white focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
+            <Bot size={14} /> Gia sư EduAce
+          </div>
         </div>
       </div>
 
       <div className="border-b border-slate-200 bg-white px-6 py-3">
         <div className="flex flex-wrap gap-2">
-          {docs.map((d) => {
+          {visibleSources.map((d) => {
             const isActive = activeIds.includes(d.id);
+            const isDisabled = !sourcesLocked && !isActive && activeIds.length >= MAX_ACTIVE_SOURCES;
             return (
               <button
                 key={d.id}
                 onClick={() => toggleActive(d.id)}
+                disabled={isDisabled || sourcesLocked}
                 className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
                   isActive
                     ? "border-blue-600 bg-blue-600 text-white"
-                    : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
-                }`}
-                title={isActive ? "Click để bỏ khỏi nguồn" : "Click để thêm vào nguồn"}
+                    : isDisabled
+                      ? "border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed"
+                      : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                } ${sourcesLocked ? "cursor-default" : ""}`}
+                title={
+                  sourcesLocked
+                    ? "Nguồn của phiên này đã cố định"
+                    : isActive
+                      ? "Đang là nguồn — click để bỏ"
+                      : isDisabled
+                        ? `Đã đủ ${MAX_ACTIVE_SOURCES} nguồn, bỏ bớt 1 file để thêm`
+                        : "Click để thêm vào nguồn chat"
+                }
               >
-                <FileText size={12} />
+                {isActive ? <Check size={12} /> : <FileText size={12} />}
                 <span className="max-w-[180px] truncate">{d.fileName}</span>
-                {isActive && <X size={12} />}
               </button>
             );
           })}
+          {visibleSources.length === 0 && (
+            <span className="text-xs italic text-slate-400">Không tìm thấy tài liệu khớp.</span>
+          )}
         </div>
       </div>
 
@@ -184,6 +283,7 @@ const MultiDocStudy: React.FC = () => {
               <h3 className="mt-3 text-sm font-bold text-slate-700">Bắt đầu chat đa tài liệu</h3>
               <p className="mt-2 text-xs text-slate-500">
                 Đặt câu hỏi so sánh, đối chiếu, tổng hợp giữa các tài liệu đã chọn. AI sẽ trích dẫn nguồn rõ ràng.
+                Phiên chat sẽ được lưu để xem lại.
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs text-slate-500">
                 <span className="rounded-full bg-slate-100 px-3 py-1">"So sánh ... giữa 2 tài liệu"</span>
@@ -199,18 +299,18 @@ const MultiDocStudy: React.FC = () => {
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+                className={`max-w-[85%] min-w-0 overflow-hidden rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
                   msg.role === "user"
                     ? "bg-blue-600 text-white"
                     : "bg-white text-slate-800 border border-slate-100"
                 }`}
               >
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-blue max-w-none prose-p:leading-relaxed prose-strong:text-blue-700">
+                  <div className="prose prose-sm prose-blue max-w-none break-words prose-p:leading-relaxed prose-strong:text-blue-700 prose-pre:overflow-x-auto prose-pre:max-w-full prose-pre:whitespace-pre prose-code:break-words">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
-                  msg.content
+                  <span className="whitespace-pre-wrap break-words">{msg.content}</span>
                 )}
               </div>
             </div>
